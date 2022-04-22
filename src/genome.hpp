@@ -17,7 +17,7 @@ struct interval{
   int start;
   int end;
   int cn;
-  int jid_start;  // keep junction ID for tracking
+  int jid_start;  // keep breakpoint ID for tracking
   int jid_end;
 
   bool operator<(interval const &other) const {
@@ -32,7 +32,7 @@ struct haplotype_pos{
   int haplotype;
   int start;
   int end;
-  int jid_start;  // keep junction ID for tracking
+  int jid_start;  // keep breakpoint ID for tracking
   int jid_end;
 
   bool operator<(haplotype_pos const &other) const {
@@ -92,8 +92,8 @@ public:
       return false;
   }
 
-  // iterates along list of junctions, assigns centromeric = True property
-  // based on junction position relating to true genomic centromere position
+  // iterates along list of breakpoints, assigns centromeric = True property
+  // based on breakpoint position relating to true genomic centromere position
   bool is_centromere(segment seg){
     int chr = seg.chr;
     // int chr_size = CHR_LENGTHS[chr];
@@ -108,7 +108,7 @@ public:
     return false;
   }
 
-  // checks whether a segment (accessed via the junction) is inverted; as inferred via the list of paths
+  // checks whether a segment (accessed via the breakpoint) is inverted; as inferred via the list of paths
   // if segment is inverted, node property "inv" = True
   bool is_inverted(){
     return false;
@@ -120,29 +120,30 @@ public:
 // a breakpoint in the chromosome, introduced by a DSB, haplotype-specific,
 // node in the genome graph
 // one instance for each copy
-class junction{
+// TODO: rename to be more accurate breakpoint
+class breakpoint{
 public:
-  int id;   // keep increasing when new junctions are added
+  int id;   // keep increasing when new breakpoints are added
   int cell_ID;
-  int path_ID = -1;  // a junction can only belong to one path
+  int path_ID = -1;  // a breakpoint can only belong to one path
   int chr;
   int pos;
   int side;   // 0 left or 1 right, strand in RCK, orientation
   int haplotype;
   // int cn;  // there may be multiple copies due to replication??
-  bool is_repaired; // end junction has only one connection (not necessarily telomere)
+  bool is_repaired; // end breakpoint has only one connection (not necessarily telomere)
   // bool is_visited;  // whether in a path or not, used to determine circular paths
   int left_jid = -1;
   int right_jid = -1;
   bool is_end;  // whether it is at the end of genome or not, correspond to telomere when DSBs are not introduced to telomere regions
   // bool is_centromeric; // whether it overlaps with centromere, correspond to centromere when DSBs are not introduced to centromere regions
 
-  junction(){
+  breakpoint(){
 
   }
 
 
-  junction(int cell_ID, int id, int chr, int pos, int side, int haplotype, bool is_end, bool is_repaired){
+  breakpoint(int cell_ID, int id, int chr, int pos, int side, int haplotype, bool is_end, bool is_repaired){
     this->cell_ID = cell_ID;
     this->id = id;
     this->chr = chr;
@@ -155,23 +156,23 @@ public:
   }
 
 
-  junction(const junction& junc){
-    cell_ID = junc.cell_ID;
-    id = junc.id;
-    path_ID = junc.path_ID;
-    chr = junc.chr;
-    pos = junc.pos;
-    side = junc.side;
-    haplotype = junc.haplotype;
-    is_end = junc.is_end;
-    is_repaired = junc.is_repaired;
-    left_jid = junc.left_jid;
-    right_jid = junc.right_jid;
-    is_end = junc.is_end;
+  breakpoint(const breakpoint& bp){
+    cell_ID = bp.cell_ID;
+    id = bp.id;
+    path_ID = bp.path_ID;
+    chr = bp.chr;
+    pos = bp.pos;
+    side = bp.side;
+    haplotype = bp.haplotype;
+    is_end = bp.is_end;
+    is_repaired = bp.is_repaired;
+    left_jid = bp.left_jid;
+    right_jid = bp.right_jid;
+    is_end = bp.is_end;
   }
 
 
-  bool operator==(const junction &j) const {
+  bool operator==(const breakpoint &j) const {
       return id == j.id;
   }
 
@@ -185,18 +186,18 @@ public:
     if(is_end){
       end = "at genome end";
     }
-    cout << "Junction " << id << " in cell " << cell_ID << " at path " << path_ID << " at chr " << chr << " position " << pos << ", side " << get_side_string(side) << ", haplotype " << haplotype << ", " << conn << ", " << end << ", left junction " << left_jid << ", right junction " << right_jid << endl;
+    cout << "breakpoint " << id << " in cell " << cell_ID << " at path " << path_ID << " at chr " << chr << " position " << pos << ", side " << get_side_string(side) << ", haplotype " << haplotype << ", " << conn << ", " << end << ", left breakpoint " << left_jid << ", right breakpoint " << right_jid << endl;
   }
 
 
-  void find_adjacent_junction(){
-    // left sided junctions
+  void find_adjacent_breakpoint(){
+    // left sided breakpoints
 
-    // right sided junctions
+    // right sided breakpoints
 
-    // closest junction
+    // closest breakpoint
 
-    // furtherest junction
+    // furtherest breakpoint
 
     // telomere
   }
@@ -204,20 +205,20 @@ public:
 };
 
 
-bool compare_junc_pos(junction* j1, junction* j2){
+bool compare_bp_pos(breakpoint* j1, breakpoint* j2){
   assert(j1->haplotype == j2->haplotype);
   assert(j1->chr == j2->chr);
   return j1->pos < j2->pos;
 }
 
 
-bool compare_junc_pos_by_chr(junction* j1, junction* j2){
+bool compare_bp_pos_by_chr(breakpoint* j1, breakpoint* j2){
   assert(j1->chr == j2->chr);
   return (j1->pos < j2->pos) || (j1->pos == j2->pos && j1->haplotype < j2->haplotype) ;
 }
 
 
-bool compare_junc_pos_by_haplotype(junction* j1, junction* j2){
+bool compare_bp_pos_by_haplotype(breakpoint* j1, breakpoint* j2){
   assert(j1->chr == j2->chr && j1->pos == j2->pos);
   return (j1->haplotype < j2->haplotype);
 }
@@ -235,7 +236,7 @@ public:
   bool is_centromeric; // for interval only
   int telomeric_type;  // for interval only; 0: no telomere; 1: left telomere; 2: right telomere; 3: both telomeres
   bool is_inverted;
-  int sv_type;   // assigned later based on the two junctions
+  int sv_type;   // assigned later based on the two breakpoints
 
   adjacency(int cell_ID, int id, int path_ID, int junc_id1, int junc_id2, int type, int telomeric_type, int sv_type = NONE){
     this->id = id;
@@ -272,10 +273,10 @@ public:
     if(is_inverted){
       invt = "inverted";
     }
-    cout << "Adjacency " << id << " in cell " << cell_ID << " at path " << path_ID << " with left junction " << junc_id1 << " and right junction " << junc_id2 << ", " << cent << ", " << invt << ", " << get_adj_type_string(type) << ", " << get_telomere_type_string(telomeric_type) << ", " << get_sv_type_string(sv_type) << endl;
+    cout << "Adjacency " << id << " in cell " << cell_ID << " at path " << path_ID << " with left breakpoint " << junc_id1 << " and right breakpoint " << junc_id2 << ", " << cent << ", " << invt << ", " << get_adj_type_string(type) << ", " << get_telomere_type_string(telomeric_type) << ", " << get_sv_type_string(sv_type) << endl;
   }
 
-  void print_interval(map<int, junction*>& junctions){
+  void print_interval(map<int, breakpoint*>& breakpoints){
     string cent = "non-centromere";
     if(is_centromeric){
       cent = "centromere";
@@ -284,26 +285,26 @@ public:
     if(is_inverted){
       invt = "inverted";
     }
-    cout << "Adjacency " << id << " in cell " << cell_ID << " at path " << path_ID << " with left junction " << junc_id1 << " at " << junctions[junc_id1]->chr << "-" << junctions[junc_id1]->pos << " and right junction " << junc_id2 << " at " << junctions[junc_id2]->chr << "-" << junctions[junc_id2]->pos << ", " << cent << ", " << invt << ", " << get_telomere_type_string(telomeric_type) << ", " << get_sv_type_string(sv_type) << endl;
+    cout << "Adjacency " << id << " in cell " << cell_ID << " at path " << path_ID << " with left breakpoint " << junc_id1 << " at " << breakpoints[junc_id1]->chr << "-" << breakpoints[junc_id1]->pos << " and right breakpoint " << junc_id2 << " at " << breakpoints[junc_id2]->chr << "-" << breakpoints[junc_id2]->pos << ", " << cent << ", " << invt << ", " << get_telomere_type_string(telomeric_type) << ", " << get_sv_type_string(sv_type) << endl;
   }
 
   // this method checks whether an interval adjacency is telomeric
   // the terminal segments
-  void set_telomeric_type(map<int, junction*>& junctions){
+  void set_telomeric_type(map<int, breakpoint*>& breakpoints){
     if(type != INTERVAL){
       telomeric_type = NONTEL;
       return;
     }
 
-    int chr = junctions[junc_id1]->chr;
-    int chr2 = junctions[junc_id2]->chr;
+    int chr = breakpoints[junc_id1]->chr;
+    int chr2 = breakpoints[junc_id2]->chr;
     assert(chr == chr2);
 
     // int chr_size = CHR_LENGTHS[chr];
     int telo_end1 = TELO_ENDS1[chr];
     int telo_end2 = TELO_ENDS2[chr];
-    int start = junctions[junc_id1]->pos;
-    int end = junctions[junc_id2]->pos;
+    int start = breakpoints[junc_id1]->pos;
+    int end = breakpoints[junc_id2]->pos;
 
     if(start <= telo_end1 && end >= telo_end2){
       telomeric_type = COMPLETE;
@@ -316,23 +317,23 @@ public:
     }
   }
 
-  // iterates along list of junctions, assigns centromeric = True property
-  // based on junction position relating to true genomic centromere position
-  void set_centromeric_status(map<int, junction*>& junctions){
+  // iterates along list of breakpoints, assigns centromeric = True property
+  // based on breakpoint position relating to true genomic centromere position
+  void set_centromeric_status(map<int, breakpoint*>& breakpoints){
     if(type != 0){
       is_centromeric = false;
       return;
     }
 
-    int chr = junctions[junc_id1]->chr;
-    int chr2 = junctions[junc_id2]->chr;
+    int chr = breakpoints[junc_id1]->chr;
+    int chr2 = breakpoints[junc_id2]->chr;
     assert(chr == chr2);
 
     // int chr_size = CHR_LENGTHS[chr];
     int cent_start = CENT_STARTS[chr];
     int cent_end = CENT_ENDS[chr];
-    int start = junctions[junc_id1]->pos;
-    int end = junctions[junc_id2]->pos;
+    int start = breakpoints[junc_id1]->pos;
+    int end = breakpoints[junc_id2]->pos;
 
     if((start < cent_start && end > cent_start)
       || (start > cent_start && end < cent_end)
@@ -352,20 +353,20 @@ public:
   int cell_ID;
   // int start;
   // int end;
-  vector<int> nodes;  // junction IDs
+  vector<int> nodes;  // breakpoint IDs
   vector<int> edges;  // adjacency IDs following the derivative chromosome
-  // map<int, junction*> nodes;
+  // map<int, breakpoint*> nodes;
   // map<int, adjacency*> edges;
   // int size;  // number of nodes in the path
   int type;  // 0: nonTel; 1: pTel; 2: qTel; 3: ptel to tel (complete)
-  int num_centromere;   // counts how many centromeres there are in a defined path
+  int n_centromere;   // counts how many centromeres there are in a defined path
   bool is_circle;
 
   path(int id, int cell_ID, int type){
     this->id = id;
     this->cell_ID = cell_ID;
     this->type = type;
-    this->num_centromere = 0;
+    this->n_centromere = 0;
     this->is_circle = false;
   }
 
@@ -374,7 +375,7 @@ public:
     if(is_circle){
       shape = "circular";
     }
-    cout << "Path " << id << " in cell " << cell_ID << ", " << shape << ", with " << num_centromere << " centromere and " << get_telomere_type_string(type) << "; " << nodes.size() << " nodes: ";
+    cout << "Path " << id << " in cell " << cell_ID << ", " << shape << ", with " << n_centromere << " centromere and " << get_telomere_type_string(type) << "; " << nodes.size() << " nodes: ";
     for(auto n : nodes){
       cout << n << ",";
     }
@@ -386,14 +387,14 @@ public:
   }
 
 
-  // copy a subpath of p from junction j1 to j2 (not used)
+  // copy a subpath of p from breakpoint j1 to j2 (not used)
   void copy_subpath(path p, int j1, int j2, const vector<adjacency>& adjacencies){
     nodes.clear();
     edges.clear();
 
     int curr_eid = -1;
     int start_eid = -1;
-    // find the id of start junction
+    // find the id of start breakpoint
     for(int i = 0; i < p.edges.size(); i++){
       curr_eid = p.edges[i];
       if(adjacencies[curr_eid].junc_id1 == j1){
@@ -434,24 +435,26 @@ class genome {
 public:
   int cell_ID;
 
-  // junction (breakpoint) and adjacency define the genome graph
+  // breakpoint (breakpoint) and adjacency define the genome graph
   // use map to access each element by its unique ID
-  map<int, junction*> junctions;
+  map<int, breakpoint*> breakpoints;
   map<int, adjacency*> adjacencies;
   vector<path*> paths;
 
-  // map<pair<int, int>, vector<junction*>> junc_map;  // group junctions by haplotype and chr to facilitate neighbor searching
+  // map<pair<int, int>, vector<breakpoint*>> junc_map;  // group breakpoints by haplotype and chr to facilitate neighbor searching
   map<pair<int, int>, vector<interval>>  cn_by_chr_hap;
   map<pair<int, int>, vector<interval>>  cn_by_chr_hap_merged;
   vector<segment*> segments;
-  // int num_adj;   // total number of adjacencies introduced in history, used to get unique adjacency ID;
+  // int n_adj;   // total number of adjacencies introduced in history, used to get unique adjacency ID;
 
   // number of DSBs on each chr each haplotype
-  vector<int> vec_num_dsb;
+  // vector<int> vec_n_dsb;   // hard to maintain across cell divisions due to random path distributions
   // breaks introduced due to multiple centromeres during mitosis
-  vector<int> vec_num_mitosis_break;
+  // vector<int> vec_n_mitosis_break;  // seem not biologically meaningful
+  // map<int, vector<int>> chr_type_num;  // chr, num for each SV type indexed by TYPE
 
   vector<segment> cn_profile;
+  vector<int> chr_ends;
 
   ~genome(){
     for(auto p : paths){
@@ -460,7 +463,7 @@ public:
     for(auto am : adjacencies){
       delete am.second;
     }
-    for(auto jm : junctions){
+    for(auto jm : breakpoints){
       delete jm.second;
     }
     for(auto s : segments){
@@ -472,28 +475,32 @@ public:
 
   }
 
-  // only junction at ends and interval adjacencies
+  // only breakpoint at ends and interval adjacencies
   genome(int cell_ID){
     this->cell_ID = cell_ID;
-    // create junctions on chromosome ends, for each haplotype
+    // create breakpoints on chromosome ends, for each haplotype
     int jid = 0;
     int aid = 0;
     int pid = 0;
     for(int chr = 0; chr < NUM_CHR; chr++){
+      // vec_n_dsb.push_back(0);
+      // vector<int> n_sv(NUM_SVTYPE, 0);
+      // chr_type_num[chr] = n_sv;
+
       bool is_end = true;
       bool is_repaired = true;
 
-      // two junctions are generated
+      // two breakpoints are generated
       int haplotype = 0;
       // int cell_ID, int id, int chr, int pos, int side, int haplotype, bool is_end, bool is_repaired
-      junction* j1 = new junction(cell_ID, jid++, chr, 0, TAIL, haplotype, is_end, is_repaired);
-      junction* j2 = new junction(cell_ID, jid++, chr, CHR_LENGTHS[chr], HEAD, haplotype, is_end, is_repaired);
+      breakpoint* j1 = new breakpoint(cell_ID, jid++, chr, 0, TAIL, haplotype, is_end, is_repaired);
+      breakpoint* j2 = new breakpoint(cell_ID, jid++, chr, CHR_LENGTHS[chr], HEAD, haplotype, is_end, is_repaired);
       j1->right_jid = j2->id;
       j2->left_jid = j1->id;
       j1->path_ID = pid;
       j2->path_ID = pid;
-      junctions[j1->id] = j1;
-      junctions[j2->id] = j2;
+      breakpoints[j1->id] = j1;
+      breakpoints[j2->id] = j2;
       // interval
       adjacency* adj = new adjacency(cell_ID, aid++, pid, j1->id, j2->id, INTERVAL, COMPLETE, NONE);
       adjacencies[adj->id] = adj;
@@ -504,16 +511,15 @@ public:
       p->edges.push_back(adj->id);
       paths.push_back(p);
 
-
       haplotype = 1;
-      junction* j3 = new junction(cell_ID, jid++, chr, 0, TAIL, haplotype, is_end, is_repaired);
-      junction* j4 = new junction(cell_ID, jid++, chr, CHR_LENGTHS[chr], HEAD, haplotype, is_end, is_repaired);
+      breakpoint* j3 = new breakpoint(cell_ID, jid++, chr, 0, TAIL, haplotype, is_end, is_repaired);
+      breakpoint* j4 = new breakpoint(cell_ID, jid++, chr, CHR_LENGTHS[chr], HEAD, haplotype, is_end, is_repaired);
       j3->right_jid = j4->id;
       j4->left_jid = j3->id;
       j3->path_ID = pid;
       j4->path_ID = pid;
-      junctions[j3->id] = j3;
-      junctions[j4->id] = j4;
+      breakpoints[j3->id] = j3;
+      breakpoints[j4->id] = j4;
       // interval
       adjacency* adj2 = new adjacency(cell_ID, aid++, pid, j3->id, j4->id, INTERVAL, COMPLETE, NONE);
       adjacencies[adj2->id] = adj2;
@@ -523,15 +529,12 @@ public:
       p2->nodes.push_back(j4->id);
       p2->edges.push_back(adj2->id);
       paths.push_back(p2);
-    }
-    // num_adj = adjacencies.size();
 
-    // get_junction_map();
-
-    for(int i = 0; i < NUM_CHR * 2; i++){
-      vec_num_dsb.push_back(0);
-      vec_num_mitosis_break.push_back(0);
+      chr_ends.insert(chr_ends.end(), {j1->id, j2->id, j3->id, j4->id});
     }
+    // n_adj = adjacencies.size();
+
+    // get_breakpoint_map();
   };
 
 
@@ -541,12 +544,12 @@ public:
 
 
   void print(){
-    cout << junctions.size() << " junctions in the genome: " << endl;
-    for(auto j : junctions){
+    cout << breakpoints.size() << " breakpoints in the genome: " << endl;
+    for(auto j : breakpoints){
       (j.second)->print();
     }
 
-    // cout << "junctions in the genome (grouped by haplotype and chr): " << endl;
+    // cout << "breakpoints in the genome (grouped by haplotype and chr): " << endl;
     // for(auto jm : junc_map){
     //   cout << "haplotype " << jm.first.first << " chr " << jm.first.second << ": ";
     //   for(auto j : jm.second){
@@ -566,10 +569,10 @@ public:
   }
 
 
-  // // find junctions by haplotype and chr
-  // void get_junction_map(){
-  //   for(auto jm : junctions){
-  //     junction* j = jm.second;
+  // // find breakpoints by haplotype and chr
+  // void get_breakpoint_map(){
+  //   for(auto jm : breakpoints){
+  //     breakpoint* j = jm.second;
   //     int haplotype = j->haplotype;
   //     int chr = j->chr;
   //     pair<int, int> key(chr, haplotype);
@@ -579,8 +582,8 @@ public:
 
 
   // find right neighbor of j1 if exists
-  // assume juncs stores sorted junctions on the same haplotype and chr
-  junction* get_left_junction(junction* j1, const vector<junction*>& juncs){
+  // assume juncs stores sorted breakpoints on the same haplotype and chr
+  breakpoint* get_left_breakpoint(breakpoint* j1, const vector<breakpoint*>& juncs){
     for(int i = 0; i < juncs.size(); i++){
       if(juncs[i]->id == j1->id && i - 1 >= 0){
         // cout << "left jid " << juncs[i - 1]->id << endl;
@@ -592,8 +595,8 @@ public:
 
 
   // find right neighbor of j1 if exists
-  // assume juncs stores sorted junctions on the same haplotype and chr
-  junction* get_right_junction(junction* j1, const vector<junction*>& juncs){
+  // assume juncs stores sorted breakpoints on the same haplotype and chr
+  breakpoint* get_right_breakpoint(breakpoint* j1, const vector<breakpoint*>& juncs){
     for(int i = 0; i < juncs.size(); i++){
       if(juncs[i]->id == j1->id && i + 1 < juncs.size()){
         // cout << "right jid " << juncs[i + 1]->id << endl;
@@ -604,11 +607,11 @@ public:
   }
 
 
-  // return the index of the adjacency specified by two junctions
+  // return the index of the adjacency specified by two breakpoints
   // an adjacency may appear inverted in a path
-  // if one interval forms a circle, there will be two adjacencies between the junctions
+  // if one interval forms a circle, there will be two adjacencies between the breakpoints
   void get_adjacency_ID(vector<int>& aids, int j1, int j2, map<int, adjacency*>& adjacencies){
-    // cout << "get adjacency id for junction " << j1 << " and " << j2 << endl;
+    // cout << "get adjacency id for breakpoint " << j1 << " and " << j2 << endl;
     for(auto adjm : adjacencies){
       adjacency* adj = adjm.second;
       // adj->print();
@@ -625,13 +628,13 @@ public:
   }
 
 
-  int remove_adjacency(int j1, int j2){
+  int remove_adjacency(int j1, int j2, int verbose = 0){
     for(std::map<int, adjacency*>::iterator it = adjacencies.begin(); it != adjacencies.end(); ++it){
       adjacency* adj = it->second;
       if((adj->junc_id1 == j1 && adj->junc_id2 == j2) || (adj->junc_id2 == j1 && adj->junc_id1 == j2)){
         int aid = adj->id;
         assert(it->first == aid);
-        cout << "remove adjacency " << aid << ": " << j1 << "-" << j2 << endl;
+        if(verbose) cout << "remove adjacency " << aid << ": " << j1 << "-" << j2 << endl;
         delete adj;
         adjacencies.erase(it);
         return aid;
@@ -651,25 +654,25 @@ public:
   }
 
 
-  // jid and aid are passed by reference to automatically get the new IDs for next new junctions
+  // jid and aid are passed by reference to automatically get the new IDs for next new breakpoints
   // , bool update_path = false
-  void add_new_junction(int cell_ID, int& jid, int &aid, int chr, int bp, int haplotype, int j1l_id = -1, int j2r_id = -1){
-    bool debug = true;
+  void add_new_breakpoint(int cell_ID, int& jid, int &aid, int chr, int bp, int haplotype, int j1l_id = -1, int j2r_id = -1, int verbose = 0){
     bool is_end = false;
     // a new breakpoint will generate two new segments j1, j2
     // (j1, j2) still unconnected, need to be repaired
     bool is_repaired = false;
 
-    // two junctions at the same position are generated, with different sides (orientation)
-    junction* j1 = new junction(cell_ID, jid++, chr, bp, HEAD, haplotype, is_end, is_repaired);
-    junction* j2 = new junction(cell_ID, jid++, chr, bp, TAIL, haplotype, is_end, is_repaired);
+    // two breakpoints at the same position are generated, with different sides (orientation)
+    breakpoint* j1 = new breakpoint(cell_ID, jid++, chr, bp, HEAD, haplotype, is_end, is_repaired);
+    breakpoint* j2 = new breakpoint(cell_ID, jid++, chr, bp, TAIL, haplotype, is_end, is_repaired);
     // only connect DSBs later in the repair stage
     j1->right_jid = -1;
     j2->left_jid = -1;
-    junctions[j1->id] = j1;
-    junctions[j2->id] = j2;
-    if(debug){
-      cout << "adding new junction " << j1->id << "\t" << j2->id << " at chr " << chr << " position " << bp << " haplotype " << haplotype << " between junction " << j1l_id << " and " << j2r_id << endl;
+    breakpoints[j1->id] = j1;
+    breakpoints[j2->id] = j2;
+
+    if(verbose){
+      cout << "adding new breakpoint " << j1->id << "\t" << j2->id << " at chr " << chr << " position " << bp << " haplotype " << haplotype << " between breakpoint " << j1l_id << " and " << j2r_id << endl;
     }
 
     // the other side of j1l and j2r are unaffected
@@ -678,42 +681,42 @@ public:
     // junc_map[key].push_back(j1);
     // junc_map[key].push_back(j2);
     //
-    // vector<junction*> juncs = junc_map[key];
-    // sort(juncs.begin(), juncs.end(), compare_junc_pos);
+    // vector<breakpoint*> juncs = junc_map[key];
+    // sort(juncs.begin(), juncs.end(), compare_bp_pos);
 
     // add new smaller intervals (j1l, j1), (j2, j2r)
     assert(j1l_id != -1);
     assert(j2r_id != -1);
-    junction* j1l = junctions[j1l_id];
-    junction* j2r = junctions[j2r_id];
+    breakpoint* j1l = breakpoints[j1l_id];
+    breakpoint* j2r = breakpoints[j2r_id];
     assert(j1l != NULL);
     assert(j2r != NULL);
 
     j1->path_ID = j1l->path_ID;
     adjacency* adj1 = new adjacency(cell_ID, aid++, j1l->path_ID, j1l->id, j1->id, INTERVAL, NONTEL, NONE);
-    adj1->set_telomeric_type(junctions);
+    adj1->set_telomeric_type(breakpoints);
     adjacencies[adj1->id] = adj1;
-    // num_adj += 1;
+    // n_adj += 1;
     j1l->right_jid = j1->id;
     j1->left_jid = j1l->id;
 
 
     j2->path_ID = j2r->path_ID;
     adjacency* adj2 = new adjacency(cell_ID, aid++, j2r->path_ID, j2->id, j2r->id, INTERVAL, NONTEL, NONE);
-    adj2->set_telomeric_type(junctions);
+    adj2->set_telomeric_type(breakpoints);
     adjacencies[adj2->id] = adj2;
     j2->right_jid = j2r->id;
     j2r->left_jid = j2->id;
-    // num_adj += 1;
+    // n_adj += 1;
 
-    if(debug){
-      cout << "updated four junctions affected by break " << endl;
+    if(verbose){
+      cout << "updated four breakpoints affected by break " << endl;
       j1l->print();
-      cout << "junction at the left of j1: ";
+      cout << "breakpoint at the left of j1: ";
       j1l->print();
       j1->print();
       j2->print();
-      cout << "junction at the right of j2: ";
+      cout << "breakpoint at the right of j2: ";
       j2r->print();
     }
 
@@ -722,7 +725,7 @@ public:
     // for(auto a : adjacencies){
     //   a->print();
     // }
-    remove_adjacency(j1l->id, j2r->id);
+    remove_adjacency(j1l->id, j2r->id, verbose);
     // remove from paths
     // cout << "adjacencies after removing j1l to j2r" << endl;
     // for(auto a : adjacencies){
@@ -734,20 +737,19 @@ public:
     // }
   }
 
-  // iminate DSB by introducing breakpoints (junctions), following infinite site assumption
-  // a junction will not disappear once exist
+  // iminate DSB by introducing breakpoints (breakpoints), following infinite sites assumption
+  // a breakpoint will not disappear once exist
   // n_dsb: number of breakpoints for each chromosome
-  void generate_dsb(int n_dsb){
-    bool debug = false;
-
-    // group junctions by haplotype and chr for sorting
-    // get_junction_map();
+  // TODO: add interval DSB probability based on overlapping with FSs
+  void generate_dsb(int n_dsb, int verbose = 0){
+    // group breakpoints by haplotype and chr for sorting
+    // get_breakpoint_map();
 
     gsl_ran_discrete_t* dis_loc = gsl_ran_discrete_preproc(NUM_CHR, CHR_PROBS);
-    int jid = junctions.rbegin()->first + 1;
+    int jid = breakpoints.rbegin()->first + 1;
     int aid = adjacencies.rbegin()->first + 1;
-    if(debug){
-      cout << jid << " junctions before introducing DSB" << endl;
+    if(verbose){
+      cout << jid << " breakpoints before introducing DSB" << endl;
     }
 
     for(int i = 0; i < n_dsb; i = i + 1){
@@ -793,36 +795,37 @@ public:
         bp = (int)runiform(r, intl.start, intl.end);
         left_jid = intl.jid_start;
         right_jid = intl.jid_end;
-        // cout << "select interval "  << sel_intl << ": " << intl.start << ", " << intl.end  << " at bp " << bp << " with left junction " << left_jid << " and right junction " << right_jid << endl;
+        // cout << "select interval "  << sel_intl << ": " << intl.start << ", " << intl.end  << " at bp " << bp << " with left breakpoint " << left_jid << " and right breakpoint " << right_jid << endl;
+
       }while(!is_insertable || bp <= TELO_ENDS1[chr] || bp >= TELO_ENDS2[chr] || (bp >= CENT_STARTS[chr] && bp <= CENT_ENDS[chr]));
 
-      if(debug) cout << "break " << i + 1 << " at position " << bp << " chr " << chr << " haplotype " << haplotype << " with left junction " << left_jid << " and right junction " << right_jid << endl;
-      add_new_junction(cell_ID, jid, aid, chr, bp, haplotype, left_jid, right_jid);
-
       // update number of DSBs per chrom per haplotype
-      int idx = 2 * chr + haplotype;
-      vec_num_dsb[idx] += 1;
+      // int idx = chr + haplotype * NUM_CHR;
+      // vec_n_dsb[chr] += 1;
+
+      if(verbose) cout << "break " << i + 1 << " at position " << bp << " chr " << chr << " haplotype " << haplotype << " with left breakpoint " << left_jid << " and right breakpoint " << right_jid << endl;
+
+      add_new_breakpoint(cell_ID, jid, aid, chr, bp, haplotype, left_jid, right_jid, verbose);
     }
   }
 
 
-  void repair_dsb(int n_unrepaired, vector<junction*>& junc2repair){
-    bool debug = true;
+  void repair_dsb(int n_unrepaired, vector<breakpoint*>& junc2repair, int verbose = 0){
     // store segments without telomeres
     int aid = adjacencies.rbegin()->first + 1;
 
     // connect segments randomly to get variant adjacencies (repair DSBs)
-    // only junctions with missing connections need to be repaired
-    // vector<junction> junc2repair(junctions.begin(), junctions.end());
-    for(auto jm : junctions){
-      junction* j = jm.second;
+    // only breakpoints with missing connections need to be repaired
+    // vector<breakpoint> junc2repair(breakpoints.begin(), breakpoints.end());
+    for(auto jm : breakpoints){
+      breakpoint* j = jm.second;
       if(!j->is_repaired){
         junc2repair.push_back(j);
       }
     }
 
-    if(debug){
-      cout << "#junctions to repair: " << junc2repair.size() << endl;
+    if(verbose){
+      cout << "#breakpoints to repair: " << junc2repair.size() << endl;
       for(auto j : junc2repair){
         j->print();
       }
@@ -835,35 +838,35 @@ public:
 
     // checks how many remaining breaks there are in G1
     // if less than a pre-specified value then G1 will stop
-    // each junction has at most one missing connection
-    // junctions should not be at genome end
+    // each breakpoint has at most one missing connection
+    // breakpoints should not be at genome end
     while(junc2repair.size() > n_unrepaired){
       int j1id = myrng(junc2repair.size());
-      junction* j1 = junc2repair[j1id];
+      breakpoint* j1 = junc2repair[j1id];
       junc2repair.erase(std::remove(junc2repair.begin(), junc2repair.end(), j1), junc2repair.end());
-      // cout << "#junctions remaining after 1st repair: " << junc2repair.size() << endl;
+      // cout << "#breakpoints remaining after 1st repair: " << junc2repair.size() << endl;
       j1->is_repaired = true;
 
       int j2id = myrng(junc2repair.size());
-      junction* j2 = junc2repair[j2id];
+      breakpoint* j2 = junc2repair[j2id];
       junc2repair.erase(std::remove(junc2repair.begin(), junc2repair.end(), j2), junc2repair.end());
-      // cout << "#junctions remaining after 2nd repair: " << junc2repair.size() << endl;
+      // cout << "#breakpoints remaining after 2nd repair: " << junc2repair.size() << endl;
       j2->is_repaired = true;
 
-      if(debug){
-        cout << "repair junction " << j1->id << "\t" << j2->id << endl;
+      if(verbose){
+        cout << "repair breakpoint " << j1->id << "\t" << j2->id << endl;
         j1->print();
         j2->print();
       }
 
-      // each junction node should has degree 2
+      // each breakpoint node should has degree 2
       adjacency* adj = NULL;
       SV_type sv_type = NONE;
-      // determine direction by junction side
+      // determine direction by breakpoint side
       if(j1->chr == j2->chr && j1->pos == j2->pos && j1->haplotype == j2->haplotype && j1->side != j2->side){
         // reference adjacency (should be rare)
         adj = new adjacency(cell_ID, aid++, -1, j1->id, j2->id, REF, NONTEL, NONE);
-        adj->set_telomeric_type(junctions);
+        adj->set_telomeric_type(breakpoints);
         adjacencies[adj->id] = adj;
         // adj->print();
         if(j1->left_jid == -1){
@@ -876,6 +879,9 @@ public:
         }else{
           j2->right_jid = j1->id;
         }
+        // cout << "before updating sv type count " << chr_type_num[j1->chr][sv_type] << endl;
+        // chr_type_num[j1->chr][sv_type] += 1;
+        // cout << "after updating sv type count " << chr_type_num[j1->chr][sv_type] << endl;
       }else{
         // variant adjacencies
         if(j1->side == HEAD && j2->side == TAIL){
@@ -886,6 +892,13 @@ public:
           // DEL (deletion-like; +/-)
           sv_type = DEL;
           // interval in the reference genome is lost
+          if(j1->chr != j2->chr){
+            sv_type = TRA;
+            // chr_type_num[j1->chr][sv_type] += 1;
+            // chr_type_num[j2->chr][sv_type] += 1;
+          }else{
+            // chr_type_num[j1->chr][sv_type] += 1;
+          }
         }else if(j1->side == HEAD && j2->side == HEAD){ //h2hINV
           assert(j1->left_jid >= 0);
           assert(j2->left_jid >= 0);
@@ -893,6 +906,13 @@ public:
           j2->right_jid = j1->id;
           // h2hINV (head-to-head inversion; +/+)
           sv_type = H2HINV;
+          if(j1->chr != j2->chr){
+            sv_type = TRA;
+            // chr_type_num[j1->chr][sv_type] += 1;
+            // chr_type_num[j2->chr][sv_type] += 1;
+          }else{
+            // chr_type_num[j1->chr][sv_type] += 1;
+          }
         }else if(j1->side == TAIL && j2->side == HEAD){
           assert(j1->right_jid >= 0);
           assert(j2->left_jid >= 0);
@@ -900,6 +920,13 @@ public:
           j2->right_jid = j1->id;
           // DUP (duplication-like; -/+)
           sv_type = DUP;
+          if(j1->chr != j2->chr){
+            sv_type = TRA;
+            // chr_type_num[j1->chr][sv_type] += 1;
+            // chr_type_num[j2->chr][sv_type] += 1;
+          }else{
+            // chr_type_num[j1->chr][sv_type] += 1;
+          }
         }else{  //if(j1->side == TAIL && j2->side == TAIL)
           assert(j1->right_jid >= 0);
           assert(j2->right_jid >= 0);
@@ -907,19 +934,27 @@ public:
           j2->left_jid = j1->id;
           // t2tINV (tail-to-tail inversion; -/-)
           sv_type = T2TINV;
+          if(j1->chr != j2->chr){
+            sv_type = TRA;
+            // chr_type_num[j1->chr][sv_type] += 1;
+            // chr_type_num[j2->chr][sv_type] += 1;
+          }else{
+            // chr_type_num[j1->chr][sv_type] += 1;
+          }
         }
+
         adj = new adjacency(cell_ID, aid++, -1, j1->id, j2->id, VAR, NONTEL, sv_type);
-        adj->set_telomeric_type(junctions);
+        adj->set_telomeric_type(breakpoints);
         adjacencies[adj->id] = adj;
         // adj->print();
       } // else
 
-      // this->num_adj++;
+      // this->n_adj++;
     } // while
 
-    if(debug){
-      cout << junctions.size() << " junctions after repairing dsb" << endl;
-      for(auto j : junctions){
+    if(verbose){
+      cout << breakpoints.size() << " breakpoints after repairing dsb" << endl;
+      for(auto j : breakpoints){
         (j.second)->print();
       }
       cout << adjacencies.size() << " adjacencies after repairing dsb" << endl;
@@ -931,9 +966,7 @@ public:
 
 
   // add one edge into path p
-  bool update_path_by_adj(path* p, junction* js, junction* jn, map<int, adjacency*>& adjacencies, bool check_circle = true){
-    bool debug = true;
-
+  bool update_path_by_adj(path* p, breakpoint* js, breakpoint* jn, map<int, adjacency*>& adjacencies, bool check_circle = true, int verbose = 0){
     vector<int> aids;
     get_adjacency_ID(aids, js->id, jn->id, adjacencies);
     if(aids.size() == 0) return false;
@@ -975,12 +1008,12 @@ public:
       ){
     // if(adj->is_centromeric){
       // cout << "one more centromere" << endl;
-      p->num_centromere += 1;
+      p->n_centromere += 1;
       adj->is_centromeric = true;
     }
 
-    if(debug){
-      cout << "update path " << p->id << " with adjacency " << aid << " with junction " << js->id << ", " << jn->id << endl;
+    if(verbose){
+      cout << "update path " << p->id << " with adjacency " << aid << " with breakpoint " << js->id << ", " << jn->id << endl;
       adj->print();
       js->print();
       jn->print();
@@ -990,32 +1023,32 @@ public:
   }
 
 
-  // a connected path of junctions starting from js
+  // a connected path of breakpoints starting from js
   // is_forward: true -- left to right (5' to 3', p-tel to q-tel), 1 -- right to left
-  // check left junction if the right junction is the same as jp
+  // check left breakpoint if the right breakpoint is the same as jp
   // circular path
-  void get_connected_junction(junction* js, path* p, map<int, adjacency*>& adjacencies, bool check_circle = true){
+  void get_connected_breakpoint(breakpoint* js, path* p, map<int, adjacency*>& adjacencies, bool check_circle = true, int verbose = 0){
     int nei = js->right_jid;
-    cout << js->id << " right junction " << nei << endl;
+    if(verbose) cout << js->id << " right breakpoint " << nei << endl;
     if(nei == -1){
       nei = js->left_jid;
-      cout << js->id << " left junction " << nei << endl;
+      if(verbose) cout << js->id << " left breakpoint " << nei << endl;
     }
-    junction* jp = js;
+    breakpoint* jp = js;
 
     while(nei != -1){
-      junction* jn = junctions[nei];
+      breakpoint* jn = breakpoints[nei];
 
       bool succ = update_path_by_adj(p, jp, jn, adjacencies, check_circle);
       if(!succ)  break;
 
       nei = jn->right_jid;
-      cout << jn->id << " right junction " << nei << endl;
+      if(verbose) cout << jn->id << " right breakpoint " << nei << endl;
       vector<int> aids;
       get_adjacency_ID(aids, jn->id, nei, adjacencies);
-      if(nei == jp->id && aids.size() == 1){  // right junction has been visited
+      if(nei == jp->id && aids.size() == 1){  // right breakpoint has been visited
         nei = jn->left_jid;
-        cout << jn->id << " left junction " << nei << endl;
+        if(verbose) cout << jn->id << " left breakpoint " << nei << endl;
       }
       jp = jn;
     }
@@ -1024,10 +1057,9 @@ public:
 
   // # defines paths that start and end on a telomere prior to S phase
   // # i.e. these paths are fully connected upon completion of G1
-  void get_derivative_genome(){
-    bool debug = true;
+  void get_derivative_genome(int verbose = 0){
     paths.clear();
-    for(auto jm : junctions){
+    for(auto jm : breakpoints){
       (jm.second)->path_ID = -1;
     }
     for(auto am : adjacencies){
@@ -1036,24 +1068,24 @@ public:
 
     int pid = 0;
 
-    // Find all junctions at the left telomere (pTel)
-    vector<junction*> junc_starts;
+    // Find all breakpoints at the left telomere (pTel)
+    vector<breakpoint*> junc_starts;
 
-    for(auto jm : junctions){
-      junction* j = jm.second;
+    for(auto jm : breakpoints){
+      breakpoint* j = jm.second;
       if(j->pos == 0 && j->is_end){
         junc_starts.push_back(j);
       }
     }
 
-    if(debug){
-      // cout << "all junctions in the genome:" << endl;
-      // for(auto jm: junctions){
-      //   junction* j = jm.second;
+    if(verbose){
+      // cout << "all breakpoints in the genome:" << endl;
+      // for(auto jm: breakpoints){
+      //   breakpoint* j = jm.second;
       //   j->print();
       // }
 
-      cout << "all junctions at the left telomere:";
+      cout << "all breakpoints at the left telomere:";
       for(auto js : junc_starts){
         cout << " " << js->id;
       }
@@ -1066,12 +1098,12 @@ public:
       path* p = new path(pid++, cell_ID, NONTEL);
       js->path_ID = p->id;
       p->nodes.push_back(js->id);
-      get_connected_junction(js, p, adjacencies);
+      get_connected_breakpoint(js, p, adjacencies, verbose);
       int size = p->nodes.size();
-      if(junctions[p->nodes[0]]->id == junctions[p->nodes[size-1]]->id){
+      if(breakpoints[p->nodes[0]]->id == breakpoints[p->nodes[size-1]]->id){
         p->is_circle = true;
       }
-      if(junctions[p->nodes[size-1]]->is_end){
+      if(breakpoints[p->nodes[size-1]]->is_end){
         p->type = COMPLETE; // end nodes should also be telomere
       }else{
         p->type = PTEL; // pTel
@@ -1079,7 +1111,7 @@ public:
       paths.push_back(p);
     }
 
-    if(debug){
+    if(verbose){
       cout << "path starting at the left telomere " << endl;
       for(auto p : paths){
         p->print();
@@ -1088,15 +1120,15 @@ public:
 
     // stores unconnected paths for parsing to S phase
     // should be qTel
-    vector<junction*> junc_unconnected_lends;
-    for(auto jm : junctions){
-      junction* j = jm.second;
+    vector<breakpoint*> junc_unconnected_lends;
+    for(auto jm : breakpoints){
+      breakpoint* j = jm.second;
       if(j->path_ID < 0 && j->pos > 0 && j->is_end){
         junc_unconnected_lends.push_back(j);
       }
     }
-    if(debug){
-      cout << "all qtel junctions not fully connected:";
+    if(verbose){
+      cout << "all qtel breakpoints not fully connected:";
       for(auto js : junc_unconnected_lends){
         cout << " " << js->id;
       }
@@ -1107,13 +1139,13 @@ public:
       path* p = new path(pid++, cell_ID, NONTEL);
       js->path_ID = p->id;
       p->nodes.push_back(js->id);
-      get_connected_junction(js, p, adjacencies);
+      get_connected_breakpoint(js, p, adjacencies, verbose);
       // end nodes should be telomere
       int size = p->nodes.size();
-      if(junctions[p->nodes[0]]->id == junctions[p->nodes[size-1]]->id){
+      if(breakpoints[p->nodes[0]]->id == breakpoints[p->nodes[size-1]]->id){
         p->is_circle = true;
       }
-      if(junctions[p->nodes[size-1]]->is_end){
+      if(breakpoints[p->nodes[size-1]]->is_end){
         p->type = COMPLETE;
       }else{
         p->type = QTEL;
@@ -1121,23 +1153,23 @@ public:
       paths.push_back(p);
     }
 
-    if(debug){
+    if(verbose){
       cout << "with path starting at the right telomere " << endl;
       for(auto p : paths){
         p->print();
       }
     }
 
-    vector<junction*> junc_unconnected;
-    for(auto jm : junctions){
-      junction* j = jm.second;
+    vector<breakpoint*> junc_unconnected;
+    for(auto jm : breakpoints){
+      breakpoint* j = jm.second;
       if(j->path_ID < 0){
         assert(!j->is_end);
         junc_unconnected.push_back(j);
       }
     }
-    if(debug){
-      cout << "all non-end junctions not fully connected:";
+    if(verbose){
+      cout << "all non-end breakpoints not fully connected:";
       for(auto js : junc_unconnected){
         cout << " " << js->id;
       }
@@ -1148,19 +1180,19 @@ public:
       path* p = new path(pid++, cell_ID, NONTEL);
       js->path_ID = p->id;
       p->nodes.push_back(js->id);
-      get_connected_junction(js, p, adjacencies);
+      get_connected_breakpoint(js, p, adjacencies, verbose);
       // end nodes should be telomere
       int size = p->nodes.size();
-      if(junctions[p->nodes[0]]->id == junctions[p->nodes[size-1]]->id){
+      if(breakpoints[p->nodes[0]]->id == breakpoints[p->nodes[size-1]]->id){
         p->is_circle = true;
       }
-      assert(!junctions[p->nodes[size-1]]->is_end);
+      assert(!breakpoints[p->nodes[size-1]]->is_end);
       p->type = NONTEL; // nonTel
       paths.push_back(p);
     }
 
 
-    // all junctions should be in some path
+    // all breakpoints should be in some path
     for(auto am : adjacencies){
       adjacency* a = am.second;
       if(a->path_ID < 0){
@@ -1172,7 +1204,7 @@ public:
   }
 
 
-void update_adj_junc(adjacency*  adj_copy_prev, junction* junc_copy_prev, junction* junc_copy){
+void update_adj_junc(adjacency*  adj_copy_prev, breakpoint* junc_copy_prev, breakpoint* junc_copy){
   if(adj_copy_prev->is_inverted){
     adj_copy_prev->junc_id2 = junc_copy_prev->id;
     adj_copy_prev->junc_id1 = junc_copy->id;
@@ -1184,23 +1216,22 @@ void update_adj_junc(adjacency*  adj_copy_prev, junction* junc_copy_prev, juncti
 
 
 void update_end_junc(int last_jid_orig, int last_jid) {
-  assert(junctions[last_jid_orig]->right_jid == junctions[last_jid]->right_jid ||
-  junctions[last_jid_orig]->left_jid == junctions[last_jid]->left_jid);
+  assert(breakpoints[last_jid_orig]->right_jid == breakpoints[last_jid]->right_jid ||
+  breakpoints[last_jid_orig]->left_jid == breakpoints[last_jid]->left_jid);
 
-  if(junctions[last_jid_orig]->right_jid == junctions[last_jid]->right_jid){
-    assert(junctions[last_jid_orig]->right_jid == -1);
-    junctions[last_jid_orig]->right_jid = last_jid;
-    junctions[last_jid]->right_jid = last_jid_orig;
+  if(breakpoints[last_jid_orig]->right_jid == breakpoints[last_jid]->right_jid){
+    assert(breakpoints[last_jid_orig]->right_jid == -1);
+    breakpoints[last_jid_orig]->right_jid = last_jid;
+    breakpoints[last_jid]->right_jid = last_jid_orig;
   }else{
-    assert(junctions[last_jid_orig]->left_jid == -1);
-    junctions[last_jid_orig]->left_jid = last_jid;
-    junctions[last_jid]->left_jid = last_jid_orig;
+    assert(breakpoints[last_jid_orig]->left_jid == -1);
+    breakpoints[last_jid_orig]->left_jid = last_jid;
+    breakpoints[last_jid]->left_jid = last_jid_orig;
   }
 }
 
-  // duplicate a path p and related objects (junctions and adjacencies) so that p = 2p
-  void duplicate_path(path& p){
-    bool debug = true;
+  // duplicate a path p and related objects (breakpoints and adjacencies) so that p = 2p
+  void duplicate_path(path& p, int verbose = 0){
     vector<int> edges_copy;
     vector<int> nodes_copy;
 
@@ -1213,9 +1244,9 @@ void update_end_junc(int last_jid_orig, int last_jid) {
     assert(p.nodes.size() == p.edges.size() + 1);
     int curr_eid = 0;
     adjacency* adj_copy_prev = NULL;
-    junction* junc_copy_prev = NULL;
-    junction* junc_prev = NULL;
-    map<int, int> junc_id_map;  // a map of junction ids to link copied junctions together
+    breakpoint* junc_copy_prev = NULL;
+    breakpoint* junc_prev = NULL;
+    map<int, int> junc_id_map;  // a map of breakpoint ids to link copied breakpoints together
     // duplicate edge (adjacency)
     // nodes in forward order, adjacency may be inverted
     for(int i = 0; i < p.edges.size(); i++){
@@ -1226,20 +1257,20 @@ void update_end_junc(int last_jid_orig, int last_jid) {
       adj_copy->id = adjacencies.rbegin()->first + 1;
       adjacencies[adj_copy->id] = adj_copy;
 
-      // duplicate node (junction) and update adj_copy
+      // duplicate node (breakpoint) and update adj_copy
       assert(p.nodes[i] == adj->junc_id1 || p.nodes[i] == adj->junc_id2);
-      junction* junc = junctions[p.nodes[i]];
-      junction* junc_copy = new junction(*junc);
-      junc_copy->id = junctions.rbegin()->first + 1;
-      junctions[junc_copy->id] = junc_copy;
-      junc_id_map[junc->id] = junc_copy->id;
+      breakpoint* bp = breakpoints[p.nodes[i]];
+      breakpoint* junc_copy = new breakpoint(*bp);
+      junc_copy->id = breakpoints.rbegin()->first + 1;
+      breakpoints[junc_copy->id] = junc_copy;
+      junc_id_map[bp->id] = junc_copy->id;
 
-      if(debug){
+      if(verbose){
         cout << "copy adjacency " << adj->id << endl;
         adj->print();
         adj_copy->print();
-        cout << "copy junction " << junc->id << endl;
-        junc->print();
+        cout << "copy breakpoint " << bp->id << endl;
+        bp->print();
         junc_copy->print();
       }
 
@@ -1252,35 +1283,35 @@ void update_end_junc(int last_jid_orig, int last_jid) {
 
       junc_copy_prev = junc_copy;
       adj_copy_prev = adj_copy;
-      junc_prev = junc;
+      junc_prev = bp;
     }
 
     assert(curr_eid >= 0);
-    // duplicate last node (junction), since #node = #edge + 1
-    junction* junc = junctions[p.nodes[p.nodes.size()-1]];
-    junction* junc_copy = new junction(*junc);
-    junc_copy->id = junctions.rbegin()->first + 1;
-    junctions[junc_copy->id] = junc_copy;
+    // duplicate last node (breakpoint), since #node = #edge + 1
+    breakpoint* bp = breakpoints[p.nodes[p.nodes.size()-1]];
+    breakpoint* junc_copy = new breakpoint(*bp);
+    junc_copy->id = breakpoints.rbegin()->first + 1;
+    breakpoints[junc_copy->id] = junc_copy;
     nodes_copy.push_back(junc_copy->id);
-    junc_id_map[junc->id] = junc_copy->id;
-    if(debug){
-      cout << "copy junction " << junc->id << endl;
-      junc->print();
+    junc_id_map[bp->id] = junc_copy->id;
+    if(verbose){
+      cout << "copy breakpoint " << bp->id << endl;
+      bp->print();
       junc_copy->print();
     }
     // the neighbor updated depends on direction
     update_adj_junc(adj_copy_prev, junc_copy_prev, junc_copy);
 
     for(auto jid : nodes_copy){
-      if(junctions[jid]->left_jid >= 0){
-        junctions[jid]->left_jid = junc_id_map[junctions[jid]->left_jid];
+      if(breakpoints[jid]->left_jid >= 0){
+        breakpoints[jid]->left_jid = junc_id_map[breakpoints[jid]->left_jid];
       }
-      if(junctions[jid]->right_jid >= 0){
-        junctions[jid]->right_jid = junc_id_map[junctions[jid]->right_jid];
+      if(breakpoints[jid]->right_jid >= 0){
+        breakpoints[jid]->right_jid = junc_id_map[breakpoints[jid]->right_jid];
       }
     }
 
-    if(debug){
+    if(verbose){
       cout << "all copied nodes: " << endl;
       for(int i = 0; i < edges_copy.size(); i++){
         int aid = edges_copy[i];
@@ -1289,31 +1320,31 @@ void update_end_junc(int last_jid_orig, int last_jid) {
       }
       for(int i = 0; i < nodes_copy.size(); i++){
         int jid = nodes_copy[i];
-        junction* j= junctions[jid];
+        breakpoint* j= breakpoints[jid];
         j->print();
       }
     }
 
     // merge duplicated path with original path
-    p.num_centromere = p.num_centromere * 2;
-    if(p.type == PTEL || p.type == NONTEL){  // pTel -- connect last junction
+    p.n_centromere = p.n_centromere * 2;
+    if(p.type == PTEL || p.type == NONTEL){  // pTel -- connect last breakpoint
       int last_jid_orig = p.nodes[p.nodes.size() - 1];
-      int last_jid = junc_copy->id;   // junction copied as forward
+      int last_jid = junc_copy->id;   // breakpoint copied as forward
 
       // add connection between original path and its copy at the end
       int aid = adjacencies.rbegin()->first + 1;
       adjacency* adj_var = new adjacency(cell_ID, aid, p.id, last_jid_orig, last_jid, VAR, NONTEL, H2HINV);
       adjacencies[adj_var->id] = adj_var;
 
-      // one neighbor of the copied junction must have pointed to its neighbour copy
+      // one neighbor of the copied breakpoint must have pointed to its neighbour copy
       // only the neighbor not updated will be equal to original node's neighbor
       update_end_junc(last_jid_orig, last_jid);
 
-      assert(junctions[last_jid_orig]->left_jid >= 0 && junctions[last_jid_orig]->right_jid >= 0);
-      assert(junctions[last_jid]->left_jid >= 0 && junctions[last_jid]->right_jid >= 0);
+      assert(breakpoints[last_jid_orig]->left_jid >= 0 && breakpoints[last_jid_orig]->right_jid >= 0);
+      assert(breakpoints[last_jid]->left_jid >= 0 && breakpoints[last_jid]->right_jid >= 0);
 
-      junctions[last_jid_orig]->is_repaired = true;
-      junctions[last_jid]->is_repaired = true;
+      breakpoints[last_jid_orig]->is_repaired = true;
+      breakpoints[last_jid]->is_repaired = true;
 
       p.edges.push_back(adj_var->id);
       p.edges.insert(p.edges.end(), edges_copy.rbegin(), edges_copy.rend());
@@ -1329,16 +1360,16 @@ void update_end_junc(int last_jid_orig, int last_jid) {
 
       update_end_junc(first_jid_orig, first_jid);
 
-      assert(junctions[first_jid_orig]->left_jid >= 0 && junctions[first_jid_orig]->right_jid >= 0);
-      assert(junctions[first_jid]->left_jid >= 0 && junctions[first_jid]->right_jid >= 0);
+      assert(breakpoints[first_jid_orig]->left_jid >= 0 && breakpoints[first_jid_orig]->right_jid >= 0);
+      assert(breakpoints[first_jid]->left_jid >= 0 && breakpoints[first_jid]->right_jid >= 0);
 
-      junctions[first_jid_orig]->is_repaired = true;
-      junctions[first_jid]->is_repaired = true;
+      breakpoints[first_jid_orig]->is_repaired = true;
+      breakpoints[first_jid]->is_repaired = true;
 
       p.edges.push_back(adj_var->id);
       p.is_circle = true;
     }
-    if(p.type == QTEL){  // qTel -- connect first junction, path start from qTel
+    if(p.type == QTEL){  // qTel -- connect first breakpoint, path start from qTel
       int last_jid_orig = p.nodes[p.nodes.size() - 1];
       int last_jid = junc_copy->id;
 
@@ -1348,11 +1379,11 @@ void update_end_junc(int last_jid_orig, int last_jid) {
 
       update_end_junc(last_jid_orig, last_jid);
 
-      assert(junctions[last_jid_orig]->left_jid >= 0 && junctions[last_jid_orig]->right_jid >= 0);
-      assert(junctions[last_jid]->left_jid >= 0 && junctions[last_jid]->right_jid >= 0);
+      assert(breakpoints[last_jid_orig]->left_jid >= 0 && breakpoints[last_jid_orig]->right_jid >= 0);
+      assert(breakpoints[last_jid]->left_jid >= 0 && breakpoints[last_jid]->right_jid >= 0);
 
-      junctions[last_jid_orig]->is_repaired = true;
-      junctions[last_jid]->is_repaired = true;
+      breakpoints[last_jid_orig]->is_repaired = true;
+      breakpoints[last_jid]->is_repaired = true;
 
       p.edges.push_back(adj_var->id);
       p.edges.insert(p.edges.end(), edges_copy.rbegin(), edges_copy.rend());
@@ -1364,11 +1395,11 @@ void update_end_junc(int last_jid_orig, int last_jid) {
       p.type = COMPLETE;
     }
 
-    if(debug){
+    if(verbose){
       cout << "duplicated path " << endl;
       p.print();
       for(auto jid : p.nodes){
-        junctions[jid]->print();
+        breakpoints[jid]->print();
       }
       for(auto aid : p.edges){
         adjacencies[aid]->print();
@@ -1427,8 +1458,7 @@ void update_end_junc(int last_jid_orig, int last_jid) {
   }
 
 
-  void get_unique_interval(){
-    bool debug = true;
+  void get_unique_interval(int verbose = 0){
     cn_by_chr_hap.clear();
 
     // get CN for each interval
@@ -1437,9 +1467,9 @@ void update_end_junc(int last_jid_orig, int last_jid) {
     for(auto am : adjacencies){
       adjacency* a = am.second;
       if(a->type == INTERVAL){
-        junction* j1 = junctions[a->junc_id1];
-        junction* j2 = junctions[a->junc_id2];
-        if(debug){
+        breakpoint* j1 = breakpoints[a->junc_id1];
+        breakpoint* j2 = breakpoints[a->junc_id2];
+        if(verbose){
           j1->print();
           j2->print();
         }
@@ -1458,7 +1488,7 @@ void update_end_junc(int last_jid_orig, int last_jid) {
       }
     }
 
-    if(debug){
+    if(verbose){
       cout << "Original interval and copy numbers after cell cycle" << endl;
       for(auto cnp : cn_by_pos){
         haplotype_pos key = cnp.first;
@@ -1488,7 +1518,7 @@ void update_end_junc(int last_jid_orig, int last_jid) {
     }
 
 
-    if(debug){
+    if(verbose){
       cout << "intervals by chr and haplotype" << endl;
       for(auto cnp : cn_by_chr_hap){
         int chr = cnp.first.first;
@@ -1506,10 +1536,10 @@ void update_end_junc(int last_jid_orig, int last_jid) {
 }
 
 
-void get_merged_interval(){
-    bool debug = true;
+void get_merged_interval(int verbose = 0){
+    cn_by_chr_hap_merged.clear();
 
-    get_unique_interval();
+    get_unique_interval(verbose);
 
     // merge continous intervals on same chr and haplotype
     for(auto cnp : cn_by_chr_hap){
@@ -1537,7 +1567,7 @@ void get_merged_interval(){
       }
     }
 
-    if(debug){
+    if(verbose){
       cout << "merged intervals" << endl;
       for(auto cnp : cn_by_chr_hap_merged){
         int chr = cnp.first.first;
@@ -1558,8 +1588,7 @@ void get_merged_interval(){
 
   // Compute allele-specific and total copy number
   // need to sync coordinates of segments across haplotypes
-  void calculate_segment_cn(){
-    bool debug = false;
+  void calculate_segment_cn(int verbose = 0){
     this->segments.clear();
     int sid = 0;
 
@@ -1581,7 +1610,7 @@ void get_merged_interval(){
       }
     }
 
-    if(debug){
+    if(verbose){
       cout << "breakpoints for each chr" << endl;
       for(auto bpc : bps_by_chr){
         int chr = bpc.first;
@@ -1609,7 +1638,7 @@ void get_merged_interval(){
         pos1 = pos2;
       }
 
-      if(debug){
+      if(verbose){
         cout << "intervals for each chr" << endl;
         cout << chr << ":";
         for(auto intl : intls){
@@ -1650,7 +1679,7 @@ void get_merged_interval(){
       for(auto intl : intls){
         segment* s = new segment(sid++, cell_ID, chr, intl.first, intl.second, cn_A[intl], cn_B[intl]);
         this->segments.push_back(s);
-        s->print();
+        if(verbose) s->print();
       }
     }
   }

@@ -152,6 +152,7 @@ public:
     vector<Cell_ptr> cells;   // all cells at present
     vector<int> id_curr_cells;      // Only store the IDs of cell to save space
 
+    // vector<pair<int, int>> lineage_cells;  // record lineage relationship of all cells
     // map<int, vector<double>> fits_by_time;
 
     // vector<string> bps; // breakpoints
@@ -163,14 +164,13 @@ public:
 
 
     int ntot;   // total number of cells generated so far, used to increase cell ID
-    int n_cycle;   // number of cell cycles gone through
+    // int n_cycle;   // number of cell cycles gone through
+    int n_complex_path;  // number of paths with >1 centromeres, not useful when included for each cell as it is split into daughter cells
+    int n_path_break; // a complex path may have 2 or more centromeres
 
     double time_end;    // ending time of the simulation
 
     int model;  // the model of evolution
-
-    Coord min_pos;
-    Coord max_pos;
 
     // ~Clone() = default;
     Clone(const Clone& other) = default;
@@ -234,28 +234,16 @@ public:
     /*
     Initialize the clone with clonal CNVs if exists
     */
-    void initialize_with_dsb(const Cell_ptr ncell, Model model, int verbose = 0){
+    void initialize_with_dsb(const Cell_ptr ncell, const Model& model, int track_all = 0){
         this->curr_cells.clear();
         this->curr_cells.push_back(ncell);
-        this->ntot = 1;
-        this->model = model.model_ID;
-        this->time_end = ncell->time_occur;
-    }
 
-
-    /*
-    Initialize the clone with clonal CNVs if exists, record all cells in the lineage
-    nu: The number of new mutations
-    */
-    void initialize_with_dsb_cmpl(const Cell_ptr ncell, Model model, int verbose = 0){
-        this->curr_cells.clear();
-        this->cells.clear();
-        this->curr_cells.push_back(ncell);
-        this->cells.push_back(ncell);
+        if(track_all){
+          this->cells.clear();
+          this->cells.push_back(ncell);
+        }
 
         this->ntot = 1;
-
-
         this->model = model.model_ID;
         this->time_end = ncell->time_occur;
     }
@@ -270,10 +258,10 @@ public:
     }
 
 
-    int get_num_dsb(){
+    int get_n_dsb(){
         int sum=0;
         for (auto cell: curr_cells){
-            sum += cell->num_dsb;
+            sum += cell->n_dsb;
         }
         return sum;
     }
@@ -283,52 +271,20 @@ public:
     double get_rmax(){
         double bmax = 0;
         double dmax = 0;
-        for(unsigned int i=0; i<curr_cells.size(); i++) {
+        for(unsigned int i = 0; i < curr_cells.size(); i++) {
             Cell_ptr ci = curr_cells[i];
             double bi = ci->birth_rate;
             double di = ci->death_rate;
-            if (bi > bmax) {
+            if(bi > bmax){
                 bmax = bi;
             }
-            if(di > dmax) {
+            if(di > dmax){
                 dmax = di;
             }
         }
         // cout << "Maximum birth rate: " << bmax << endl;
         // cout << "Maximum death rate: " << dmax << endl
         return bmax + dmax;
-    }
-
-
-    // Update the location of new-born daughter cells
-    Coord get_neighbor_position(Coord p_pos, double sd){
-        Coord d_pos;
-
-        gsl_vector *mu = gsl_vector_alloc(3);
-        gsl_vector *res = gsl_vector_alloc(3);
-        gsl_matrix *lower_triangle = gsl_matrix_alloc(3, 3);
-
-        gsl_vector_set(mu, 0, p_pos.x);
-        gsl_vector_set(mu, 1, p_pos.y);
-        gsl_vector_set(mu, 2, p_pos.z);
-
-        for(int i=0; i<3; ++i){
-            for(int j=0; j<3; ++j){
-                if(i == j){
-                    gsl_matrix_set(lower_triangle, i, j, sd * sd);
-                }else{
-                    gsl_matrix_set(lower_triangle, i, j, 0);
-                }
-            }
-        }
-
-        gsl_ran_multivariate_gaussian(r, mu, lower_triangle, res);
-
-        d_pos.x = gsl_vector_get(res, 0);
-        d_pos.y = gsl_vector_get(res, 1);
-        d_pos.z = gsl_vector_get(res, 2);
-
-        return d_pos;
     }
 
 
@@ -366,23 +322,20 @@ public:
        output:
         a tree-like structure. For each Cell, its children, occurence time, birth rate, death rate
      */
-     void grow_with_dsb(const Cell_ptr ncell, const Model& model, int n_cycle, int n_unrepaired, double leap_size=0, int verbose = 0, int restart = 1, double tend = DBL_MAX){
+     void grow_with_dsb(const Cell_ptr ncell, const Model& model, int Nend, int track_all = 0, int verbose = 0, int restart = 1, double tend = DBL_MAX){
          // Initialize the simulation with one cell
-         if(restart == 1) initialize_with_dsb(ncell, model, verbose);
+         if(restart == 1) initialize_with_dsb(ncell, model, track_all);
 
          double t = 0;  // starting time, relative to the time of last end
-         int mut_ID = ncell->num_dsb;  // used to distinguish different mutations
          int nu = 0; // The number of new mutations, relative to the time of last end
-         int num_dsb_event = 0; // count the number of times a CNA event is introduced
 
          if(verbose > 0) cout << "\nSimulating tumour growth with CNAs under model " << model.model_ID << " at time " << ncell->time_occur + t << endl;
 
-         while(this->n_cycle < n_cycle) {
+         while(this->curr_cells.size() < Nend) {
              if (this->curr_cells.size() == 0) {
                  t = 0;
-                 mut_ID = ncell->num_dsb;
                  nu = 0;
-                 initialize_with_dsb(ncell, model, verbose);
+                 initialize_with_dsb(ncell, model, track_all);
                  continue;
              }
              // print_all_cells(this->curr_cells, verbose);
@@ -400,7 +353,7 @@ public:
              double deltaT = tau/(rmax * this->curr_cells.size());
              t += deltaT;
 
-             if(ncell->time_occur + t > tend && this->curr_cells.size() >= MIN_NCELL){
+             if(ncell->time_occur + t > tend){
                  t = tend - ncell->time_occur;
                  break;
              }
@@ -410,7 +363,7 @@ public:
              // cout << "random number " << rb << endl;
              if(rb < rbrate){
                  // if(verbose > 1){
-                      cout << "Select cell " << rID << " with " << rcell->num_dsb << " mutations and birth rate " << rcell->birth_rate << ", death rate " << rcell->death_rate << " to divide" << endl;
+                      cout << "Select cell " << rID << " with " << rcell->n_dsb << " DSBs and birth rate " << rcell->birth_rate << ", death rate " << rcell->death_rate << " to divide" << endl;
                  // }
                  // generate two daughter cells
                  int cID1 = this->ntot + 1;
@@ -420,17 +373,13 @@ public:
                  int cID2 = this->ntot + 2;
                  Cell_ptr dcell2 = new Cell(cID2, rID, ncell->time_occur + t);
                  dcell2->copy_parent((*rcell));
-                 // dcell2->pos = get_neighbor_position(rcell->pos, POS_SIGMA);
 
-                this->n_cycle++;
-                rcell->do_cell_cycle(n_unrepaired, dcell1, dcell2);
-
+                // this->n_cycle++;
+                rcell->do_cell_cycle(dcell1, dcell2, n_complex_path, n_path_break, verbose);
 
                 this->ntot = this->ntot + 2;
 
-                 // daughter cells aquire nu new mutations, where nu ~ Poisson(dsb_rate)
-                 if(model.fitness != 0)
-                 {
+                 if(model.fitness != 0){
                      if(verbose > 1){
                          cout << "Update the grow parameters of daughter cells " << endl;
                      }
@@ -446,12 +395,17 @@ public:
                  this->curr_cells.erase(this->curr_cells.begin() + rindex);
                  this->curr_cells.push_back(dcell1);
                  this->curr_cells.push_back(dcell2);
+
+                 if(track_all){
+                  this->cells.push_back(dcell1);
+                  this->cells.push_back(dcell2);
+                 }
              }
              // death event if b<r<b+d
-             else if(rb >= rbrate && rb < rbrate + rdrate) {
+             else if(rb >= rbrate && rb < rbrate + rdrate){
                  // cout << " death event" << endl;
                  // if(verbose > 1){
-                 //   cout << "Select cell " << rID << " with " << rcell->num_dsb << " mutations and birth rate " << rcell->birth_rate << ", death rate " << rcell->death_rate << " to disappear" << endl;
+                 //   cout << "Select cell " << rID << " with " << rcell->n_dsb << " DSBs and birth rate " << rcell->birth_rate << ", death rate " << rcell->death_rate << " to disappear" << endl;
                  // }
                  if(rID != 1){
                      delete (this->curr_cells[rindex]);
@@ -464,14 +418,14 @@ public:
          }
 
          this->time_end += t;
-         // this->num_novel_dsb  += nu;
+         // this->n_novel_dsb  += nu;
 
-         if(verbose > 0){
+         if(verbose > 1){
              // cout << "Generated " << nu << " mutations during time " << t << endl;
-             if(verbose > 1) print_all_cells(this->curr_cells, verbose);
+             if(track_all) print_all_cells(this->cells, verbose);
+             else print_all_cells(this->curr_cells, verbose);
          }
      }
-
 
 
      /***************************************************************************************************************************/
@@ -483,12 +437,13 @@ public:
        This method prints out the copy numbers of each final cell in a clone
      */
     void print_all_cells(vector<Cell_ptr> cells, int verbose = 0){
-        int num_cell = cells.size();
-        if(verbose > 0) cout << "Printing " << num_cell << " cells" << endl;
+        int Nend = cells.size();
+        if(verbose > 0) cout << "Printing " << Nend << " cells" << endl;
 
-        for(unsigned int i = 0; i < num_cell; i++) {
-                Cell_ptr cell = cells[i];
-                cout << cell->cell_ID << "\t" << cell->parent_ID << endl;
+        cout << "\ncell_ID\tparent_ID\n";
+        for(unsigned int i = 0; i < Nend; i++) {
+            Cell_ptr cell = cells[i];
+            cout << cell->cell_ID << "\t" << cell->parent_ID << endl;
         }
     }
 
@@ -507,20 +462,12 @@ public:
         out << "Information for host population:" << endl;
         for(auto cell : curr_cells){
             if(cell->clone_ID == 0){
-                lambda = cell->birth_rate - cell->death_rate;
-                out << "\tCell ID: " << cell->cell_ID << endl;
-                out << "\tMutation rate: " << cell->dsb_rate << endl;
-
-                out << "\tBirth rate: " << cell->birth_rate << endl;
-                out << "\tDeath rate: " << cell->death_rate << endl;
-
-                out << "\tEffective break rate (μ/β): " << cell->dsb_rate / ((cell->birth_rate-cell->death_rate)/cell->birth_rate) << endl;
-                out << endl;
+                cell->print_cell_info();
                 if(model == 0) break;     // same rates under neutral evolution
             }
         }
         out << endl;
-        // out << "\tNumber of new breaks: "<< num_novel_dsb << endl;
+        // out << "\tNumber of new breaks: "<< n_novel_dsb << endl;
         out << "\tEnd time of simulation: " << time_end << endl;
 
         out.close();
@@ -535,7 +482,6 @@ public:
 
          cout << "Model of evolution: " << model.model_ID << endl;
          cout << "Initial Net growth rate: " << lambda << endl;
-         cout << "Mutation rate: " << start_cell->dsb_rate << endl;
          cout << "Estimated simulation finish time (tumor doublings): " << tend << endl;
 
          string outfile = "";

@@ -16,21 +16,20 @@ using namespace std;
 // Simulate structural variations during cell division
 
 int main(int argc, char const *argv[]) {
-    int n_cycle;
-    double dsb_rate;
+    // int n_cycle;
+    int n_cell;
+    // double dsb_rate;
     int min_dsb, max_dsb;
+    int n_dsb;
     int n_unrepaired;
+    int chr_prob;
     string fchr;
 
     double leap_size;
 
-    string num_cells; // number of samples to take at each side
+    string n_cells; // number of samples to take at each side
 
     double birth_rate, death_rate;
-    double mutation_rate;
-    // parameters for mean of dup/del size distributions
-    // int mean_gain_size, mean_loss_size;
-    int loc_type;
 
     int model_ID;   // not making differences, fitness is used to introduce selection
     int use_alpha;  // when alpha is used, genotype differences are considered
@@ -50,7 +49,7 @@ int main(int argc, char const *argv[]) {
     int write_shatterseek, write_cicos, write_sumstats;
 
     unsigned long seed;
-
+    int track_all;
     int verbose;
 
     namespace po = boost::program_options;
@@ -64,16 +63,18 @@ int main(int argc, char const *argv[]) {
     // parameters that are essential to simulations
     po::options_description required("Required parameters");
     required.add_options()
-      ("n_cycle,n", po::value<int>(&n_cycle)->default_value(2), "number of cell cycles")
+      // ("n_cycle", po::value<int>(&n_cycle)->default_value(2), "number of cell cycles") // only meaningful when tracking one child
+      ("n_cell,n", po::value<int>(&n_cell)->default_value(2), "size of final population")
+
+      // ("dsb_rate,r", po::value<double>(&dsb_rate)->default_value(20), "rate of double strand break per division")
       ("min_dsb", po::value<int>(&min_dsb)->default_value(0), "minimal number of double strand breaks")
       ("max_dsb", po::value<int>(&max_dsb)->default_value(40), "maximal number of double strand breaks")
-      ("n_unrepaired", po::value<int>(&n_unrepaired)->default_value(5), "mean number of unrepaired double strand breaks")
-      ("type_dsb", po::value<int>(&n_unrepaired)->default_value(0), "type of unrepaired double strand breaks. 0: random; 1: biased; 2: fixed")
+      ("n_dsb", po::value<int>(&n_dsb)->default_value(20), "maximal number of double strand breaks")
+      ("n_unrepaired", po::value<int>(&n_unrepaired)->default_value(5), "number of unrepaired double strand breaks")
+      ("chr_prob", po::value<int>(&chr_prob)->default_value(0), "the probability of double strand breaks across chromosomes. 0: random; 1: biased; 2: fixed")
 
       ("birth_rate,b", po::value<double>(&birth_rate)->default_value(1), "birth rate")
       ("death_rate,d", po::value<double>(&death_rate)->default_value(0), "death rate")
-
-      ("dsb_rate,r", po::value<double>(&dsb_rate)->default_value(20), "rate of double strand break per division")
 
       ("odir,o", po::value<string>(&outdir)->required()->default_value("./"), "output directory")
        ;
@@ -100,10 +101,11 @@ int main(int argc, char const *argv[]) {
 
       // options related to output
       ("suffix", po::value<string>(&suffix)->default_value(""), "suffix of output file")
-      ("write_cicos", po::value<int>(&write_cicos)->default_value(1), "whether or not to write files for circos plot")
-      ("write_shatterseek", po::value<int>(&write_shatterseek)->default_value(1), "whether or not to write files for shatterseek")
-      ("write_sumstats", po::value<int>(&write_sumstats)->default_value(0), "whether or not to write summary statistics")
+      ("write_cicos", po::value<int>(&write_cicos)->default_value(0), "whether or not to write files for circos plot")
+      ("write_shatterseek", po::value<int>(&write_shatterseek)->default_value(0), "whether or not to write files for shatterseek")
+      ("write_sumstats", po::value<int>(&write_sumstats)->default_value(1), "whether or not to write summary statistics")
 
+      ("track_all", po::value<int>(&track_all)->default_value(0), "whether or not to keep track of all cells")
       ("seed", po::value<unsigned long>(&seed)->default_value(0), "seed used for generating random numbers")
       ("verbose", po::value<int>(&verbose)->default_value(0), "verbose level (0: default, 1: print information of final cells; 2: print information of all cells)")
       ;
@@ -119,7 +121,7 @@ int main(int argc, char const *argv[]) {
             return 1;
         }
         if(vm.count("version")){
-            cout << "simcell [version 0.1], a program to simulate copy number variations along a stochastic branching tree" << endl;
+            cout << "simsv [version 0.1], a program to simulate SVs by generating and repairing double strand breaks along a stochastic branching tree" << endl;
             return 1;
         }
         po::notify(vm);
@@ -131,12 +133,7 @@ int main(int argc, char const *argv[]) {
 
     unsigned long rseed = setup_rng(seed);
 
-    if(verbose > 0){
-        cout << "Random seed: " << rseed << endl;
-        cout << "Simulating copy numbers called from bulk WGS and WES samples of cells sampled from a patient crypt" << endl;
-        cout << "Fitness:\t" << fitness << endl;
-        cout << "Mutation rate:\t" << mutation_rate << endl;
-    }
+    cout << "Random seed: " << rseed << endl;
 
     // cout << "Using Boost "
     //   << BOOST_VERSION / 100000     << "."  // major version
@@ -144,40 +141,70 @@ int main(int argc, char const *argv[]) {
     //   << BOOST_VERSION % 100                // patch level
     //   << std::endl;
 
-    read_genome_info(fchr, CHR_LENGTHS, ARM_BOUNDS, CENT_STARTS, CENT_ENDS, TELO_ENDS1, TELO_ENDS2);
+    read_genome_info(fchr, CHR_LENGTHS, ARM_BOUNDS, CENT_STARTS, CENT_ENDS, TELO_ENDS1, TELO_ENDS2, verbose);
+
+    vector<int> selected_chr;
+    get_chr_prob(chr_prob, selected_chr);
+    // int diff = max_dsb - min_dsb;
+    // int rdm = myrng(diff);
+    // n_dsb = min_dsb + diff;
+    // n_dsb = gsl_ran_poisson(r, dsb_rate);
 
     Model start_model(model_ID, genotype_diff, growth_type, fitness, use_alpha);
-    Cell_ptr start_cell = new Cell(1, 0, birth_rate, death_rate, dsb_rate, 0);
+    Cell_ptr start_cell = new Cell(1, 0, birth_rate, death_rate, n_dsb, n_unrepaired, 0);
     genome g(1);
     start_cell->g = g;
     Clone* s = new Clone(1, 0);
-    s->grow_with_dsb(start_cell, start_model, n_cycle, n_unrepaired, verbose);
+    s->grow_with_dsb(start_cell, start_model, n_cell, track_all, verbose);
 
-    for(auto cell : s->curr_cells){
+    vector<Cell_ptr> final_cells;
+    if(track_all){
+      cout << "Tracking all cells" << endl;
+      final_cells = s->cells;
+    }else{
+      final_cells = s->curr_cells;
+    }
+
+    for(auto cell : final_cells){
       cell->g.calculate_segment_cn();
     }
 
+
+    string filetype = ".tsv";
+
     if(write_cicos){
-      for(auto cell : s->curr_cells){
-        string fname_sv = outdir +"/" + "sv_data_c" + to_string(cell->cell_ID) + suffix + ".tsv";
+      for(auto cell : final_cells){
+        string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
+        string fname_sv = outdir +"/" + "sv_data_c" + midfix + filetype;
         cell->write_sv(fname_sv);
-        string fname_cn = outdir +"/" + "cn_data_c" + to_string(cell->cell_ID) + suffix + ".tsv";
+        string fname_cn = outdir +"/" + "cn_data_c" + midfix + filetype;
         cell->write_cnv(fname_cn);
       }
     }
 
     if(write_shatterseek){
-      for(auto cell : s->curr_cells){
-        string fname_sv_ss = outdir +"/" + "SVData_c" + to_string(cell->cell_ID) + suffix + ".tsv";
-        string fname_cn_ss = outdir +"/" + "CNData_c" + to_string(cell->cell_ID) + suffix + ".tsv";
+      for(auto cell : final_cells){
+        string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
+        string fname_sv_ss = outdir +"/" + "SVData_c" + midfix + filetype;
+        string fname_cn_ss = outdir +"/" + "CNData_c" + midfix + filetype;
         cell->write_shatterseek(fname_sv_ss, fname_cn_ss);
       }
     }
 
-    s->print_all_cells(s->curr_cells, 1);
+    s->print_all_cells(final_cells, verbose);
+
+    // cout << "Number of complex paths generated during growth " << s->n_complex_path << endl;
+    // cout << "Number of additional breaks generated during growth " << s->n_path_break << endl;
+    cout << "\nnCell\tnComplex\tnMbreak\n";
+    cout << final_cells.size() << "\t" + to_string(s->n_complex_path) + "\t" + to_string(s->n_path_break) << endl;
 
     if(write_sumstats){
-
+      for(auto cell : final_cells){
+        string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
+        string fname_stat = outdir +"/" + "sumStats_total_c" + midfix + filetype;
+        string fname_stat_chr = outdir +"/" + "sumStats_chrom_c" + midfix + filetype;
+        cell->write_summary_stats(fname_stat, fname_stat_chr);
+      }
     }
 
     return 0;

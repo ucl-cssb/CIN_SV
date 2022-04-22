@@ -52,17 +52,13 @@ vector<double> CHR_PROBS_vec(NUM_CHR, 1.0 / NUM_CHR);
 // use pointer to be compatible with gsl
 double* CHR_PROBS = &CHR_PROBS_vec[0];
 
-
-const double POS_SIGMA = 1;
-const int MIN_NCELL = 100;    // minimal #cells in a clone
-const int DEC_PLACE = 10;   // decimal place
-
+const int NUM_SVTYPE = 6;
 
 enum SStat_type{ALL};
 enum Growth_type{ONLY_BIRTH, CHANGE_BIRTH, CHANGE_DEATH, CHANGE_BOTH};
 enum Telo_type{NONTEL, PTEL, QTEL, COMPLETE};
 enum Adj_type{INTERVAL, REF, VAR};   // 0: interval, 1: reference, 2: variant
-enum SV_type{NONE, DUP, DEL, INV, TRA, H2HINV, T2TINV};  // only for variant adjacency
+enum SV_type{NONE, DEL, DUP, H2HINV, T2TINV, TRA};  // only for variant adjacency, TRA: intra-chromosomal
 enum Junc_type{HEAD, TAIL};
 
 gsl_rng * r;
@@ -73,7 +69,7 @@ unsigned long setup_rng(unsigned long set_seed){
   const gsl_rng_type* T = gsl_rng_default;
   r = gsl_rng_alloc (T);
 
-  if( set_seed != 0 ){
+  if(set_seed != 0){
     gsl_rng_set(r, set_seed);
     return(set_seed);
   }else{
@@ -91,8 +87,7 @@ unsigned long setup_rng(unsigned long set_seed){
 
 // unary function and pointer to unary function
 // allows use of gsl rng for standard template algorithms
-long unsigned myrng(long unsigned n)
-{
+long unsigned myrng(long unsigned n){
   // This function returns a random integer from 0 to n-1 inclusive by scaling down and/or discarding samples from the generator r. All integers in the range [0,n-1] are produced with equal probability.
   return gsl_rng_uniform_int(r, n);
 }
@@ -153,8 +148,7 @@ int rchoose(gsl_rng* r, const std::vector<double>& rates){
 void set_outdir(string outdir, int verbose = 0){
     const char* path = outdir.c_str();
     boost::filesystem::path dir(path);
-    if(boost::filesystem::create_directory(dir))
-    {
+    if(boost::filesystem::create_directory(dir)){
         if(verbose > 0) cerr << "Directory Created: " << outdir <<endl;
     }
 }
@@ -163,7 +157,7 @@ void set_outdir(string outdir, int verbose = 0){
 // Read strings separated by space into a vector.
 // num: the number of element in the string. If not given, assume it is the first number in the string
 template <typename T>
-void get_vals_from_str(vector<T>& vals, string str_vals, int num=0){
+void get_vals_from_str(vector<T>& vals, string str_vals, int num = 0){
     assert(str_vals != "");
     stringstream ss(str_vals);
     if(num==0)   ss >> num;
@@ -182,13 +176,12 @@ void get_vals_from_str(vector<T>& vals, string str_vals, int num=0){
 
 // Read reference genome informaton (chr start end centromere_pos)
 // chr1	0	2300000	p36.33	gneg
-void read_genome_info(const string& filename, vector<int>& chr_lengths, vector<int>& arm_boundaries, vector<int>& centromere_starts, vector<int>& centromere_ends, vector<int>& telomere_ends1, vector<int>& telomere_ends2){
-  bool debug = true;
-  if(debug) cout << "\tread reference genome informaton" << endl;
+void read_genome_info(const string& filename, vector<int>& chr_lengths, vector<int>& arm_boundaries, vector<int>& centromere_starts, vector<int>& centromere_ends, vector<int>& telomere_ends1, vector<int>& telomere_ends2, int verbose = 0){
+  if(verbose) cout << "\tread reference genome information" << endl;
 
   ifstream infile (filename.c_str());
 
-  if (infile.is_open()){
+  if(infile.is_open()){
     std::string line;
     getline(infile, line); // skip the first header line
     while(!getline(infile, line).eof()){
@@ -217,7 +210,7 @@ void read_genome_info(const string& filename, vector<int>& chr_lengths, vector<i
       telomere_ends2.push_back(pos);
     }
 
-    if(debug){
+    if(verbose){
       int nchr = chr_lengths.size();
       for(int i = 0; i < nchr; i++){
         cout << i + 1 << "\t" << chr_lengths[i] << "\t" << arm_boundaries[i] << endl;
@@ -229,14 +222,19 @@ void read_genome_info(const string& filename, vector<int>& chr_lengths, vector<i
   }
 }
 
+// read intervals, to facilitate overlap computation
+void read_fragile_sites(const string& filename, vector<int>& fragile_sites){
+
+}
 
 // get the probability matrix for selecting chromosomes
 // random, biased, fixed
+// TODO: assign probability based on Dirichlet distribution? selected_chr specified from input?
 void get_chr_prob(int type, vector<int>& selected_chr){
-  if(type == 0){
-    for(int i = 0; i < NUM_CHR; i++){
-      CHR_PROBS[i] = 1.0 / NUM_CHR;
-    }
+  if(type == 0){   // equal probability for each chromosome, or based on chromosome size?
+    // for(int i = 0; i < NUM_CHR; i++){
+    //   CHR_PROBS[i] = 1.0 / NUM_CHR;
+    // }
     return;
   }
 
@@ -248,7 +246,7 @@ void get_chr_prob(int type, vector<int>& selected_chr){
       int csel = myrng(NUM_CHR);
       selected_chr.push_back(csel);
     }
-  }else{ // fixed,  if(type == 2)
+  }else{ // fixed to one specific chromosome, chr1 by default,  if(type == 2)
     // # same probability bias as before for reproducibility
     // # choose g target chromosomes, -1 for index, advised to choose up to 3 targets max
     selected_chr.push_back(0);
@@ -299,16 +297,14 @@ string get_telomere_type_string(int type){
 }
 
 
-// NONE, DUP, DEL, INV, TRA, H2HINV, T2TINV
 string get_sv_type_string(int type){
   string type_str = "";
   switch (type) {
-    case 1: type_str = "DUP"; break;
-    case 2: type_str = "DEL"; break;
-    case 3: type_str = "INV"; break;
-    case 4: type_str = "TRA"; break;
-    case 5: type_str = "H2HINV"; break;
-    case 6: type_str = "T2TINV"; break;
+    case DUP: type_str = "DUP"; break;
+    case DEL: type_str = "DEL"; break;
+    case TRA: type_str = "TRA"; break;
+    case H2HINV: type_str = "H2HINV"; break;
+    case T2TINV: type_str = "T2TINV"; break;
     default: type_str = "NO SV";
   }
   return type_str;

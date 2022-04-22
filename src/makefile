@@ -27,4 +27,4 @@ simsv:
 
 
 clean:
-	rm simsv
+	rm ${OUT_DIR}/simsv
