@@ -75,7 +75,7 @@ public:
 
 
   void print(){
-    cout << "segment " << id << " in cell " << cell_ID << " at chr " << chr << ": " << start << " - " << end << " with copy number " << cnA << " and " << cnB << endl;
+    cout << "segment " << id + 1 << " in cell " << cell_ID << " at chr " << chr + 1 << ": " << start << " - " << end << " with copy number " << cnA << " and " << cnB << endl;
   }
 
   // this method checks whether a node is telomeric
@@ -186,7 +186,7 @@ public:
     if(is_end){
       end = "at genome end";
     }
-    cout << "breakpoint " << id << " in cell " << cell_ID << " at path " << path_ID << " at chr " << chr << " position " << pos << ", side " << get_side_string(side) << ", haplotype " << haplotype << ", " << conn << ", " << end << ", left breakpoint " << left_jid << ", right breakpoint " << right_jid << endl;
+    cout << "breakpoint " << id << " in cell " << cell_ID << " at path " << path_ID << " at chr " << chr + 1 << " position " << pos << ", side " << get_side_string(side) << ", haplotype " << get_haplotype_string(haplotype) << ", " << conn << ", " << end << ", left breakpoint " << left_jid << ", right breakpoint " << right_jid << endl;
   }
 
 
@@ -232,6 +232,7 @@ public:
   int path_ID;
   int junc_id1;
   int junc_id2;
+  // int cn;
   int type;   // 0: interval, 1: reference, 2: variant
   bool is_centromeric; // for interval only
   int telomeric_type;  // for interval only; 0: no telomere; 1: left telomere; 2: right telomere; 3: both telomeres
@@ -355,8 +356,6 @@ public:
   // int end;
   vector<int> nodes;  // breakpoint IDs
   vector<int> edges;  // adjacency IDs following the derivative chromosome
-  // map<int, breakpoint*> nodes;
-  // map<int, adjacency*> edges;
   // int size;  // number of nodes in the path
   int type;  // 0: nonTel; 1: pTel; 2: qTel; 3: ptel to tel (complete)
   int n_centromere;   // counts how many centromeres there are in a defined path
@@ -375,11 +374,11 @@ public:
     if(is_circle){
       shape = "circular";
     }
-    cout << "Path " << id << " in cell " << cell_ID << ", " << shape << ", with " << n_centromere << " centromere and " << get_telomere_type_string(type) << "; " << nodes.size() << " nodes: ";
+    cout << "Path " << id + 1 << " in cell " << cell_ID << ", " << shape << ", with " << n_centromere << " centromere and " << get_telomere_type_string(type) << "; " << nodes.size() << " nodes: ";
     for(auto n : nodes){
       cout << n << ",";
     }
-    cout << "; " << edges.size() << " edges:";
+    cout << "; " << edges.size() << " edges: ";
     for(auto e : edges){
       cout << e << ",";
     }
@@ -421,7 +420,7 @@ public:
   }
 
 
-  // counts how many centromeres there are in a defined path
+  // counts how many centromeres there are in a defined path, not used for now
   int get_ncent(){
     int ncent = 0;
     return ncent;
@@ -439,7 +438,7 @@ public:
   // use map to access each element by its unique ID
   map<int, breakpoint*> breakpoints;
   map<int, adjacency*> adjacencies;
-  vector<path*> paths;
+  vector<path*> paths;  // path ID can be duplicated
 
   // map<pair<int, int>, vector<breakpoint*>> junc_map;  // group breakpoints by haplotype and chr to facilitate neighbor searching
   map<pair<int, int>, vector<interval>>  cn_by_chr_hap;
@@ -803,7 +802,9 @@ public:
       // int idx = chr + haplotype * NUM_CHR;
       // vec_n_dsb[chr] += 1;
 
-      if(verbose) cout << "break " << i + 1 << " at position " << bp << " chr " << chr << " haplotype " << haplotype << " with left breakpoint " << left_jid << " and right breakpoint " << right_jid << endl;
+      // if(verbose) 
+      cout << "   break " << i + 1 << " at position " << bp << " chr " << chr + 1 << " haplotype " << get_haplotype_string (haplotype) << endl;
+      if(verbose) cout << " with left breakpoint " << left_jid << " and right breakpoint " << right_jid << endl;
 
       add_new_breakpoint(cell_ID, jid, aid, chr, bp, haplotype, left_jid, right_jid, verbose);
     }
@@ -858,6 +859,8 @@ public:
         j1->print();
         j2->print();
       }
+
+      cout << "   connecting " << j1->chr + 1 << ":" << get_haplotype_string(j1->haplotype) << ":" << j1->pos << get_side_string(j1->side) << " with " << j2->chr + 1 << ":" << get_haplotype_string(j2->haplotype) << ":" << j2->pos << get_side_string(j2->side) << endl;
 
       // each breakpoint node should has degree 2
       adjacency* adj = NULL;
@@ -1057,8 +1060,10 @@ public:
 
   // # defines paths that start and end on a telomere prior to S phase
   // # i.e. these paths are fully connected upon completion of G1
+  // TODO: consider duplicated path
   void get_derivative_genome(int verbose = 0){
     paths.clear();
+
     for(auto jm : breakpoints){
       (jm.second)->path_ID = -1;
     }
@@ -1460,7 +1465,7 @@ void update_end_junc(int last_jid_orig, int last_jid) {
 
   void get_unique_interval(int verbose = 0){
     cn_by_chr_hap.clear();
-
+    if(verbose) cout << "Collecting all the unique genomic intervals\n";
     // get CN for each interval
     // chr, start, end, haplotype : cn
     map<haplotype_pos, int> cn_by_pos;  // default value is 0
@@ -1489,7 +1494,8 @@ void update_end_junc(int last_jid_orig, int last_jid) {
     }
 
     if(verbose){
-      cout << "Original interval and copy numbers after cell cycle" << endl;
+      cout << "\nOriginal interval and copy numbers after cell cycle" << endl;
+      cout << "cell\tchr\thaplotype\tstart\tend\tJID_start\tJID_end\tCN\n";
       for(auto cnp : cn_by_pos){
         haplotype_pos key = cnp.first;
         int cn = cnp.second;
@@ -1499,7 +1505,7 @@ void update_end_junc(int last_jid_orig, int last_jid) {
         int end = key.end;
         int jid_start = key.jid_start;
         int jid_end = key.jid_end;
-        cout << cell_ID << "\t" << chr << "\t" << haplotype << "\t" << start << "\t" << end << "\t" << jid_start << "\t" << jid_end << "\t" << cn << "\n";
+        cout << cell_ID << "\t" << chr + 1  << "\t" << get_haplotype_string(haplotype) << "\t" << start << "\t" << end << "\t" << jid_start << "\t" << jid_end << "\t" << cn << "\n";
       }
     }
 
@@ -1519,7 +1525,8 @@ void update_end_junc(int last_jid_orig, int last_jid) {
 
 
     if(verbose){
-      cout << "intervals by chr and haplotype" << endl;
+      cout << "\nUnique intervals by chr and haplotype" << endl;
+      cout << "cell\tchr\thaplotype\tstart\tend\tJID_start\tJID_end\tCN\n";
       for(auto cnp : cn_by_chr_hap){
         int chr = cnp.first.first;
         int haplotype = cnp.first.second;
@@ -1529,7 +1536,7 @@ void update_end_junc(int last_jid_orig, int last_jid) {
           int cn = intl.cn;
           int jid_start = intl.jid_start;
           int jid_end = intl.jid_end;
-          cout << cell_ID << "\t" << chr << "\t" << haplotype << "\t" << start << "\t" << end << "\t" << jid_start << "\t" << jid_end << "\t" << cn << "\n";
+          cout << cell_ID << "\t" << chr + 1 << "\t" << get_haplotype_string(haplotype) << "\t" << start << "\t" << end << "\t" << jid_start << "\t" << jid_end << "\t" << cn << "\n";
         }
       }
     }
@@ -1541,34 +1548,39 @@ void get_merged_interval(int verbose = 0){
 
     get_unique_interval(verbose);
 
-    // merge continous intervals on same chr and haplotype
+    if(verbose) cout << "Merging continous intervals on same chr and haplotype" << endl;
+
     for(auto cnp : cn_by_chr_hap){
       vector<interval> intls = cnp.second;
       sort(intls.begin(), intls.end());
+
       interval intl_prev = intls[0];
+      cn_by_chr_hap_merged[cnp.first].push_back(intl_prev);
+      if(verbose) cout << "interval " << 1 << "\t" << intl_prev.start << "\t" << intl_prev.end << "\t" << intl_prev.cn << endl;
+          
       bool merged = false;
       // cout << intls.size() << endl;
-      for(int i = 1; i < intls.size(); i++){
-        // cout << "interval " << i << endl;
+      for(int i = 1; i < intls.size(); i++){       
         interval intl_curr = intls[i];
-        merged = false;
+        if(verbose) cout << "interval " << i + 1 << "\t" << intl_curr.start << "\t" << intl_curr.end << "\t" << intl_curr.cn << endl;
+
         if(intl_prev.end == intl_curr.start && intl_prev.cn == intl_curr.cn){
           interval intl_merged{intl_prev.start, intl_curr.end, intl_prev.cn};
+          if(verbose) cout << "interval after merging with previous one\t" << intl_merged.start << "\t" << intl_merged.end << "\t" << intl_merged.cn << endl;
+          cn_by_chr_hap_merged[cnp.first].pop_back();
           cn_by_chr_hap_merged[cnp.first].push_back(intl_merged);
-          merged = true;
+          intl_prev = intl_merged;
         }else{
-          cn_by_chr_hap_merged[cnp.first].push_back(intl_prev);
-        }
-        intl_prev = intl_curr;
-      }
-      if(!merged){
-        // cout << "last interval" << endl;
-        cn_by_chr_hap_merged[cnp.first].push_back(intl_prev);
-      }
+          if(verbose) cout << "interval without merging with previous one\t" << intl_curr.start << "\t" << intl_curr.end << "\t" << intl_curr.cn << endl;  
+          cn_by_chr_hap_merged[cnp.first].push_back(intl_curr);
+          intl_prev = intl_curr;
+        }          
+      }     
     }
 
     if(verbose){
-      cout << "merged intervals" << endl;
+      cout << "Merged intervals" << endl;
+      cout << "cell\tchr\thaplotype\tstart\tend\tJID_start\tJID_end\tCN\n";
       for(auto cnp : cn_by_chr_hap_merged){
         int chr = cnp.first.first;
         int haplotype = cnp.first.second;
@@ -1580,19 +1592,21 @@ void get_merged_interval(int verbose = 0){
           int start = intl.start;
           int end = intl.end;
           int cn = intl.cn;
-          cout << cell_ID << "\t" << chr << "\t" << haplotype << "\t" << start << "\t" << end << "\t"  << cn << "\n";
+          cout << cell_ID << "\t" << chr + 1 << "\t" << get_haplotype_string(haplotype) << "\t" << start << "\t" << end << "\t"  << cn << "\n";
         }
       }
     }
   }
 
   // Compute allele-specific and total copy number
-  // need to sync coordinates of segments across haplotypes
+  // segments completely lost in one cell are not shown
+  // TODO: sync coordinates of segments across haplotypes?
   void calculate_segment_cn(int verbose = 0){
+    // verbose = 1;
     this->segments.clear();
     int sid = 0;
 
-    get_merged_interval();
+    get_merged_interval(verbose);
 
     // split regions on same chr to get total CN (for shatterseek input)
     map<int, set<int>> bps_by_chr;
@@ -1611,7 +1625,7 @@ void get_merged_interval(int verbose = 0){
     }
 
     if(verbose){
-      cout << "breakpoints for each chr" << endl;
+      cout << "\nbreakpoints for each chr after merging regions with the same CN" << endl;
       for(auto bpc : bps_by_chr){
         int chr = bpc.first;
         cout << chr << ":";
@@ -1639,10 +1653,10 @@ void get_merged_interval(int verbose = 0){
       }
 
       if(verbose){
-        cout << "intervals for each chr" << endl;
-        cout << chr << ":";
+        cout << "\nintervals for each chr" << endl;
+        cout << chr + 1 << ":";
         for(auto intl : intls){
-          cout << " " << intl.first << "," << intl.second;
+          cout << " (" << intl.first << "," << intl.second << ")";
         }
         cout << endl;
       }

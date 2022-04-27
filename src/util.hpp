@@ -174,51 +174,58 @@ void get_vals_from_str(vector<T>& vals, string str_vals, int num = 0){
 }
 
 
-// Read reference genome informaton (chr start end centromere_pos)
+// Read reference genome informaton (chr start end centromere_pos); there must be an empty line in the end
 // chr1	0	2300000	p36.33	gneg
 void read_genome_info(const string& filename, vector<int>& chr_lengths, vector<int>& arm_boundaries, vector<int>& centromere_starts, vector<int>& centromere_ends, vector<int>& telomere_ends1, vector<int>& telomere_ends2, int verbose = 0){
-  if(verbose) cout << "\tread reference genome information" << endl;
+  verbose = 0;
+  if(verbose) cout << "\nReading reference genome information from " << filename << endl;
 
-  ifstream infile (filename.c_str());
+  ifstream infile(filename.c_str());
 
-  if(infile.is_open()){
-    std::string line;
-    getline(infile, line); // skip the first header line
-    while(!getline(infile, line).eof()){
-      if(line.empty()) continue;
-
-      std::vector<std::string> split;
-      std::string buf;
-      stringstream ss(line);
-      while (ss >> buf) split.push_back(buf);
-      assert(split.size() == 7);
-
-      int len = atoi(split[1].c_str());
-      chr_lengths.push_back(len);
-
-      int pos = atoi(split[2].c_str());
-      arm_boundaries.push_back(pos);
-
-      pos = atoi(split[3].c_str());
-      centromere_starts.push_back(pos);
-      pos = atoi(split[4].c_str());
-      centromere_ends.push_back(pos);
-
-      pos = atoi(split[5].c_str());
-      telomere_ends1.push_back(pos);
-      pos = atoi(split[6].c_str());
-      telomere_ends2.push_back(pos);
-    }
-
-    if(verbose){
-      int nchr = chr_lengths.size();
-      for(int i = 0; i < nchr; i++){
-        cout << i + 1 << "\t" << chr_lengths[i] << "\t" << arm_boundaries[i] << endl;
-      }
-    }
-  }else{
-    std::cerr << "Error: open of time data unsuccessful: " << filename << std::endl;
+  if(!infile.is_open()){
+    std::cerr << "Error: open of input data unsuccessful: " << filename << std::endl;
     exit(1);
+  }
+
+  std::string line;
+
+  getline(infile, line); // skip the first header line
+
+  while(!getline(infile, line).eof()){
+    if(verbose) cout << line << endl;
+    if(line.empty()){
+      continue;
+    }
+
+    std::vector<std::string> split;
+    std::string buf;
+    stringstream ss(line);
+    while (ss >> buf) split.push_back(buf);
+    assert(split.size() == 7);
+
+    int len = atoi(split[1].c_str());
+    chr_lengths.push_back(len);
+
+    int pos = atoi(split[2].c_str());
+    arm_boundaries.push_back(pos);
+
+    pos = atoi(split[3].c_str());
+    centromere_starts.push_back(pos);
+    pos = atoi(split[4].c_str());
+    centromere_ends.push_back(pos);
+
+    pos = atoi(split[5].c_str());
+    telomere_ends1.push_back(pos);
+    pos = atoi(split[6].c_str());
+    telomere_ends2.push_back(pos);
+  }
+
+  if(verbose){
+    // cout << chr_lengths.size() << endl;
+    int nchr = chr_lengths.size();
+    for(int i = 0; i < nchr; i++){
+      cout << i + 1 << "\t" << chr_lengths[i] << "\t" << arm_boundaries[i] << endl;
+    }
   }
 }
 
@@ -294,6 +301,15 @@ string get_telomere_type_string(int type){
     default: type_str = "NO telomere";
   }
   return type_str;
+}
+
+
+string get_haplotype_string(int hap){
+  if(hap == 0){
+    return "A";
+  }else{
+    return "B";
+  }
 }
 
 

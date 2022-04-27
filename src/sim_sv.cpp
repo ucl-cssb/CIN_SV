@@ -46,7 +46,7 @@ int main(int argc, char const *argv[]) {
     int use_std;
 
     string outdir, suffix; // output
-    int write_shatterseek, write_cicos, write_sumstats;
+    int write_shatterseek, write_cicos, write_sumstats, write_genome;
 
     unsigned long seed;
     int track_all;
@@ -104,6 +104,7 @@ int main(int argc, char const *argv[]) {
       ("write_cicos", po::value<int>(&write_cicos)->default_value(0), "whether or not to write files for circos plot")
       ("write_shatterseek", po::value<int>(&write_shatterseek)->default_value(0), "whether or not to write files for shatterseek")
       ("write_sumstats", po::value<int>(&write_sumstats)->default_value(1), "whether or not to write summary statistics")
+      ("write_genome", po::value<int>(&write_genome)->default_value(0), "whether or not to write derivative genome")
 
       ("track_all", po::value<int>(&track_all)->default_value(0), "whether or not to keep track of all cells")
       ("seed", po::value<unsigned long>(&seed)->default_value(0), "seed used for generating random numbers")
@@ -204,6 +205,14 @@ int main(int argc, char const *argv[]) {
         string fname_stat = outdir +"/" + "sumStats_total_c" + midfix + filetype;
         string fname_stat_chr = outdir +"/" + "sumStats_chrom_c" + midfix + filetype;
         cell->write_summary_stats(fname_stat, fname_stat_chr);
+      }
+    }
+
+    if(write_genome){
+      for(auto cell : final_cells){
+        string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
+        string fname = outdir +"/" + "genome_c" + midfix + filetype;
+        cell->write_genome(fname);
       }
     }
 
