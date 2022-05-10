@@ -166,7 +166,8 @@ public:
     int ntot;   // total number of cells generated so far, used to increase cell ID
     // int n_cycle;   // number of cell cycles gone through
     int n_complex_path;  // number of paths with >1 centromeres, not useful when included for each cell as it is split into daughter cells
-    int n_path_break; // a complex path may have 2 or more centromeres
+    int n_path_break;   // a complex path may have 2 or more centromeres and additional breaks are introduced to get single-centromere paths
+    int n_telo_fusion;  // telomere removal and fusion as in BFB
 
     double time_end;    // ending time of the simulation
 
@@ -375,7 +376,7 @@ public:
                  dcell2->copy_parent((*rcell));
 
                 // this->n_cycle++;
-                rcell->do_cell_cycle(dcell1, dcell2, n_complex_path, n_path_break, verbose);
+                rcell->do_cell_cycle(dcell1, dcell2, n_telo_fusion, n_complex_path, n_path_break, verbose);
 
                 this->ntot = this->ntot + 2;
 

@@ -311,7 +311,7 @@ public:
       int max_bpID = find_max_bpID();     
       for(auto jid : p->nodes){
         breakpoint* j = g.breakpoints[jid];
-        if(verbose){
+        if(verbose > 1){
           cout << "copy breakpoint " << j->id << endl;
           j->print();
         }
@@ -319,9 +319,13 @@ public:
         j1->cell_ID = dcell1->cell_ID;
         int njid = jid;
         if(ncopy > 1){
-          njid = max_bpID++;
+          njid = ++max_bpID;   // plus one first 
           j1->id = njid;
         }
+        if(verbose > 1){
+          cout << "copied breakpoint " << j1->id << endl;
+          j1->print();
+        }       
         dcell1->g.breakpoints[njid] = j1;  // not work when there are two copies of the same path, just update pointer
       }
 
@@ -329,7 +333,7 @@ public:
       int max_adjID = find_max_adjID();
       for(auto aid : p->edges){
         adjacency* a = g.adjacencies[aid];
-        if(verbose){
+        if(verbose > 1){
           cout << "copy adjacency " << a->id << endl;
           a->print();
         }
@@ -337,155 +341,24 @@ public:
         a1->cell_ID = dcell1->cell_ID;
         int naid = aid;
         if(ncopy > 1){
-          naid = max_adjID++;  
+          naid = ++max_adjID;  
           a1->id = naid;  
-        }    
+        }   
+        if(verbose > 1){
+          cout << "copied adjacency " << a1->id << endl;
+          a1->print();
+        }         
         dcell1->g.adjacencies[naid] = a1;
       }
-
     }
 
-
-    // // back up a different way to split path, issues to resolve when >1 bps exist
-    // void split_path_by_bp(){
-    //  // randombly choose an interval to introduce the break
-    //   // when breaking paths with multiple centromeres, the breakpoints must be to the other side of a breakpoint at the end
-    //   // For each adjacent interval, breakpoint is either at right of 1st interval or left of 2nd interval when finding all breakpoints before splitting intervals
-    //   // Here, left and right should be based on the direction
-          // vector<breakpoint*> junc_new;  // start breakpoints for new paths
-      // vector<adjacency*> adj_new; // new adjacencies introduced by path break
-    //   int chr = -1;
-    //   int haplotype = -1;
-    //   int left_jid = -1;
-    //   int right_jid = -1;
-    //   vector<bp_interval> bps_in_interval;   // breakpoints at each interval
-    //   vector<int> old_aids;
-    //   for(auto pair : adjID_pair_withcent){
-    //     int sel = myrng(2);  // 0 or 1
-    //     adjacency* adj = g.adjacencies[pair.first];
-    //     assert(adj->is_centromeric);
-    //     // assert(g.breakpoints[adj->junc_id1]->chr == g.breakpoints[adj->junc_id2]->chr);
-    //     // assert(g.breakpoints[adj->junc_id1]->haplotype == g.breakpoints[adj->junc_id2]->haplotype);     
-    //     int bp, ps, pe;
-
-    //     if(sel == 0){  // break on left side of second interval
-    //       adj = g.adjacencies[pair.second];   // should not be ptel
-    //       // cout << "add break on left side of second interval " << adj->id << endl;
-    //       // adj->print();
-    //       int jid = adj->junc_id1;
-    //       if(adj->is_inverted){
-    //         jid = adj->junc_id2;
-    //       }
-    //       chr = g.breakpoints[jid]->chr;
-    //       pe = CENT_STARTS[chr];
-    //       ps = g.breakpoints[jid]->pos;
-    //       bp = (int)runiform(r, ps, pe);
-    //     }else{ // break on right side of first interval
-    //       // should not be qtel
-    //       // cout << "add break on right side of first interval " << adj->id << endl;
-    //       // adj->print();
-    //       int jid = adj->junc_id2;
-    //       if(adj->is_inverted){
-    //         jid = adj->junc_id1;
-    //       }
-    //       chr = g.breakpoints[jid]->chr;
-    //       ps = CENT_ENDS[chr];
-    //       pe = g.breakpoints[jid]->pos;
-    //       bp = (int)runiform(r, ps, pe);
-    //     }
-
-    //     left_jid = adj->junc_id1;
-    //     right_jid = adj->junc_id2;
-    //     int haplotype = g.breakpoints[adj->junc_id1]->haplotype;
-    //     bp_interval bi{bp, chr, haplotype, left_jid, right_jid};
-    //     bps_in_interval.push_back(bi);
-    //     old_aids.push_back(adj->id);
-    //   }
-
-    //   assert(bps_in_interval.size() == nbreak);
-
-    //   // used to track ID of new elements
-    //   int jid = g.breakpoints.rbegin()->first + 1;
-    //   int aid = g.adjacencies.rbegin()->first + 1;  
-    //   // some interval may be chosen twice and be broken at 1st choice
-    //   int prev_left_jid = -1;
-    //   int i = 0;
-    //   for(auto bi : bps_in_interval){
-    //     int bp = bi.bp;
-    //     int chr = bi.chr;
-    //     int haplotype = bi.haplotype;
-    //     int left_jid = bi.left_jid;
-    //     int right_jid = bi.right_jid;
-    //     // cout << "cell ID before adding breakpoints " << this->cell_ID << endl;
-    //     // cout << g.breakpoints.size() << " breakpoints " << endl;
-    //     // update left_jid if an interval is chosen twice
-    //     if(prev_left_jid == left_jid){
-    //       left_jid = jid - 1;
-    //     }
-
-    //     cout << "   path break " << i + 1 << " at position " << bp << " chr " << chr + 1 << " haplotype " << get_haplotype_string (haplotype) << endl;
-    //     if(verbose){
-    //       cout << " with left breakpoint " << left_jid << " and right breakpoint " << right_jid << endl;
-    //       cout << "old adjacency with id: " << old_aids[i] << endl;
-    //     }
-
-    //     g.add_new_breakpoint(jid, aid, chr, bp, haplotype, left_jid, right_jid, verbose);
-    //     // one breakpoint is end of a path, the other is the start of another path, depending on the orientations
-    //     // jid has increased by 2 after 
-    //     junc_new.push_back(g.breakpoints[jid - 2]);  // j1
-    //     junc_new.push_back(g.breakpoints[jid - 1]);  // j2
-    //     // a new adjacency may be further broken by another breakpoint
-    //     adj_new.push_back(g.adjacencies[aid - 2]);   // adj1 (left_jid, j1)
-    //     adj_new.push_back(g.adjacencies[aid - 1]);   // adj2 (j2, right_jid)
-        
-    //     // update number of DSBs per chrom per haplotype
-    //     // int idx = chr + haplotype * NUM_CHR;
-    //     // g.vec_n_mitosis_break[idx] += 1;
-    //     prev_left_jid = left_jid;
-    //   }
-
-    //   assert(junc_new.size() == nbreak * 2);
-    //   assert(adj_new.size() == nbreak * 2);
-
-    //   // split paths at once to save cost
-    //   // no need to rejoin paths after splitting, just distribute to different daughter cells
-    //   if(verbose){
-    //     cout << "\nnew breakpoints of split paths: " << endl;
-    //     for(auto j : junc_new){
-    //       j->print();
-    //     }
-    //     cout << "new adjacencies of split paths: " << endl;
-    //     for(auto a : adj_new){
-    //       a->print();
-    //     }
-    //     cout << "#path before: " << g.paths.size() << endl;
-    //   }
-
-    //   for(int j = 0; i < nbreak; j++){
-    //     path* p1 = new path(pid++, this->cell_ID, COMPLETE);   // one part of the path until junc1
-    //     path* p2 = new path(pid++, this->cell_ID, COMPLETE);   // the other part of the path start junc2
-    //     p2split->split_path(j, p1, p2, left_jid, right_jid, old_aids, adj->is_inverted, junc_new, adj_new, verbose);
-    //     if(verbose){
-    //       p1->print();
-    //       p2->print();
-    //     }
-    //     g.set_path_type(p1);
-    //     g.set_path_type(p2);
-    //     distribute_path(p1, dcell1, dcell2, verbose);
-    //     distribute_path(p2, dcell1, dcell2, verbose);
-    //   }   
-    // }
-
-
     // called when number of centromeres in a path exceeds 1 (may be caused by random joining in G1)
-    // function chooses breakpoint location so that each path contains one centromere, introduce new breakpoints and form connections
+    // choose breakpoint location so that each path contains one centromere, introduce new breakpoints and form connections
     // assume the path has 2 telomeres at the ends
     // p2split will be split into n_centromere paths, which are distributed randomly
     void segregate_polycentric(path* p2split, Cell_ptr dcell1, Cell_ptr dcell2, int& pid, int verbose = 0){
-      // verbose = 1;    
-      
+      // verbose = 1;      
       write_path(p2split, cout);
-
       if(verbose){      
         p2split->print();
       }
@@ -507,9 +380,8 @@ public:
           // cout << "is_centromeric" << endl;
           ncent++;
           if(ncent == 2){
-            adjID_pair_withcent.push_back(pair<int, int>(prev_adj, curr_adj));
-            // restart from current interval
-            ncent = 1;
+            adjID_pair_withcent.push_back(pair<int, int>(prev_adj, curr_adj));            
+            ncent = 1;  // restart from current interval
           }
           prev_adj = curr_adj;
         }
@@ -527,7 +399,7 @@ public:
       assert(adjID_pair_withcent.size() == nbreak);
 
       // randombly choose an interval to introduce the break
-      // when breaking paths with multiple centromeres, the breakpoints must be to the other side of a breakpoint at the end
+      // when breaking paths with multiple centromeres, a breakpoint must be to the other side of another breakpoint 
       // For each adjacent interval, breakpoint is either at right of 1st interval or left of 2nd interval when finding all breakpoints before splitting intervals
       // Here, left and right should be based on the direction of the interval on the path, so need to check inversion
       int chr = -1;
@@ -540,8 +412,8 @@ public:
         int sel = myrng(2);  // 0 or 1
         adjacency* adj = g.adjacencies[pair.first];
         assert(adj->is_centromeric);
-        // assert(g.breakpoints[adj->junc_id1]->chr == g.breakpoints[adj->junc_id2]->chr);
-        // assert(g.breakpoints[adj->junc_id1]->haplotype == g.breakpoints[adj->junc_id2]->haplotype);     
+        assert(g.breakpoints[adj->junc_id1]->chr == g.breakpoints[adj->junc_id2]->chr);
+        assert(g.breakpoints[adj->junc_id1]->haplotype == g.breakpoints[adj->junc_id2]->haplotype);     
         int bp, ps, pe;
 
         if(sel == 0){  // break on left side of second interval
@@ -556,7 +428,6 @@ public:
             g.breakpoints[jid2]->print();
           }
           chr = g.breakpoints[jid1]->chr;
-
           int pos1 = g.breakpoints[jid1]->pos;
           int pos2 = g.breakpoints[jid2]->pos;          
           if(adj->is_inverted){
@@ -588,7 +459,6 @@ public:
             g.breakpoints[jid2]->print();            
           }         
           chr = g.breakpoints[jid1]->chr; 
-
           int pos1 = g.breakpoints[jid1]->pos;
           int pos2 = g.breakpoints[jid2]->pos;
           if(adj->is_inverted){
@@ -635,13 +505,13 @@ public:
         int bp = bi.bp;
         int chr = bi.chr;
         int haplotype = bi.haplotype;
+        // neighbours from bi are before any new breaks and may be changed if a break occur in this interval
         int left_jid = bi.left_jid;
         int right_jid = bi.right_jid;
         // cout << "cell ID before adding breakpoints " << this->cell_ID << endl;
         // cout << g.breakpoints.size() << " breakpoints " << endl;
         // update left_jid if an interval is chosen twice
-
-        if(prev_left_jid == left_jid){
+        if(prev_left_jid == left_jid){  
           if(bi.is_inverted){
             right_jid = jid - 2;
           }else{
@@ -713,9 +583,12 @@ public:
       cout << "\nIntroducing " << n_dsb << " DSBs" << endl;
       g.generate_dsb(n_dsb, verbose);
 
-      cout << "\nRepairing " << n_dsb - n_unrepaired << " DSBs" << endl;
+      int n_torepair = n_dsb - n_unrepaired;
+      cout << "\nRepairing " << n_torepair << " DSBs" << endl;
       vector<breakpoint*> junc2repair;
-      g.repair_dsb(n_unrepaired, junc2repair, verbose);
+      if(n_torepair > 0){      
+        g.repair_dsb(n_unrepaired, junc2repair, verbose);
+      }
 
       if(verbose){
         cout << "\nRemaing breakpoints to repair: " << endl;
@@ -725,6 +598,7 @@ public:
         cout << "\nConnecting breakpoints to paths" << endl;
       }
 
+      cout << "\nGetting the derivative genome" << endl;
       g.get_derivative_genome(verbose);
 
       if(verbose){
@@ -737,26 +611,30 @@ public:
 
 
     // S phase and G2 implemented together
-    void sphase_g2(int verbose = 0){
+    void sphase_g2(int& n_telo_fusion, int verbose = 0){
       // verbose = 1;     
       for(auto p : g.paths){
-        if(p->is_circle){
-          assert(p->nodes.size() % 2 != 0);
-        }else{
+        if(!p->is_circle){        
           assert(p->nodes.size() % 2 == 0);
         }
         assert(p->nodes.size() == p->edges.size() + 1);
 
         // replicates incomplete paths by adding new breakpoints (S) and path fusion
         if(p->type != COMPLETE && !p->is_circle){  
+          if(p->type == NONTEL && p->n_centromere > 0) continue;   // skip these paths to avoid circular DNA with centromere
           cout << "Duplicating incomplete path " << p->id + 1 << endl;
           write_path(p, cout);
+
+          if(p->type == PTEL || p->type == QTEL){
+            n_telo_fusion += 1;
+          }
 
           if(verbose){ 
             cout << "before" << endl;         
             p->print();
           }
-          g.duplicate_path(*p);
+
+          g.duplicate_path(*p, verbose);
 
           if(verbose){
             cout << "after" << endl; 
@@ -794,27 +672,24 @@ public:
       }
     }
 
+
     // randomly distribute segments between daughter cells, depend on #centromeres
     void mitosis(Cell_ptr dcell1, Cell_ptr dcell2, int&  n_complex_path, int& n_path_break, int verbose = 0){
       // verbose = 1;
-
       if(verbose){
         cout << g.paths.size() << " paths before split (may include duplicated path distributed to daughter cells)" << endl;
-        for(auto p : g.paths){
-          p->print();
-        }
+        // for(auto p : g.paths){
+        //   p->print();
+        // }
       }
 
       // get the number of paths to split to know the number of breakpoints and define new IDs for random distribution
-
       int pid = g.paths.size();
       for(auto p : this->g.paths){
-        if(p->is_circle){
-          assert(p->nodes.size() % 2 != 0);
-        }else{
+        if(verbose) p->print();
+        if(!p->is_circle){   // a circular path may have even number of nodes during path replacation
           assert(p->nodes.size() % 2 == 0);
         }
-        assert(p->nodes.size() == p->edges.size() + 1);
 
         if(p->n_centromere == 1){  // balanced distribution
           if(verbose) cout << "balanced distribution of path " << p->id + 1 << endl;
@@ -946,10 +821,11 @@ public:
     // summary for the whole genome of each cell, computed from the set of adjacencies
     // TO exclude chromosome end when counting breakpoints
     void write_summary_stats(string fname, string fname_chr){
+      // writing summary statistics for all chromosomes
       ofstream fout(fname);
       // nBP includes chromosome ends
       fout << "cycleID\tcellID\tnDSB\tnUnrepair\tnDBS_unique\tnBP_unique\tnBP\tnDel\tnDup\tnH2HInv\tnT2TInv\tnTra\tnCircle\n";
-
+      // writing summary statistics for each chromosome
       ofstream fout_chr(fname_chr);
       fout_chr << "cycleID\tcellID\tchr\tnBP\tnDel\tnDup\tnH2HInv\tnT2TInv\tnTra\n";
 
@@ -1125,7 +1001,8 @@ public:
 
     // a whole cycle of cell division
     // duplication and repair of its genome
-    void do_cell_cycle(Cell_ptr dcell1, Cell_ptr dcell2, int&  n_complex_path, int& n_path_break, int verbose = 0){
+    void do_cell_cycle(Cell_ptr dcell1, Cell_ptr dcell2, int& n_telo_fusion, int& n_complex_path, int& n_path_break, int verbose = 0){
+      // verbose = 1;
       // introduces DSBs into the genome prior to G1 repairs
       if(verbose){
         cout << "Original genome: " << endl;
@@ -1136,7 +1013,7 @@ public:
       g1(n_dsb, n_unrepaired, verbose);
 
       cout << "\nSphase and G2" << endl;
-      sphase_g2(verbose);
+      sphase_g2(n_telo_fusion, verbose);
 
       cout << "\nMitosis phase" << endl;
       mitosis(dcell1, dcell2, n_complex_path, n_path_break, verbose);

@@ -166,10 +166,10 @@ int main(int argc, char const *argv[]) {
       final_cells = s->curr_cells;
     }
 
+    // merge segments with the same CN by haplotype
     for(auto cell : final_cells){
       cell->g.calculate_segment_cn();
     }
-
 
     string filetype = ".tsv";
 
@@ -183,6 +183,7 @@ int main(int argc, char const *argv[]) {
       }
     }
 
+    // write CN and SV data to tsv - for ShatterSeek
     if(write_shatterseek){
       for(auto cell : final_cells){
         string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
@@ -194,10 +195,12 @@ int main(int argc, char const *argv[]) {
 
     s->print_all_cells(final_cells, verbose);
 
-    // cout << "Number of complex paths generated during growth " << s->n_complex_path << endl;
-    // cout << "Number of additional breaks generated during growth " << s->n_path_break << endl;
-    cout << "\nnCell\tnComplex\tnMbreak\n";
-    cout << final_cells.size() << "\t" + to_string(s->n_complex_path) + "\t" + to_string(s->n_path_break) << endl;
+    // write summary statistics in the simulation
+    string fname_stat_sim = outdir +"/" + "sumStats_sim" + filetype;
+    ofstream fout(fname_stat_sim);
+    fout << "nCell\tnDSB\tnUnrepair\tnComplex\tnMbreak\tnTelofusion\n";
+    fout << final_cells.size() << "\t" << n_dsb << "\t" << n_unrepaired << "\t" + to_string(s->n_complex_path) + "\t" + to_string(s->n_path_break) + "\t" + to_string(s->n_telo_fusion) << endl;
+    fout.close();
 
     if(write_sumstats){
       for(auto cell : final_cells){
