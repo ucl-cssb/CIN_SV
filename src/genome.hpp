@@ -522,6 +522,8 @@ public:
   vector<int> chr_ends;
 
   ~genome(){
+    // cout << "start releasing pointers" << endl;
+
     for(auto p : paths){
       delete p;
     }
@@ -534,6 +536,8 @@ public:
     for(auto s : segments){
       delete s;
     }
+
+    // cout << "finish releasing pointers" << endl;
   }
 
   genome(){
@@ -752,7 +756,7 @@ public:
     breakpoints[j2->id] = j2;
 
     if(verbose){
-      cout << "\nadding a new breakpoint " << j1->id << "\t" << j2->id << " at chr " << chr + 1 << " position " << bp << " haplotype " << haplotype << " between breakpoint " << j1l_id << " and " << j2r_id << endl;
+      cout << "\nadding a new breakpoint " << j1->id << "\t" << j2->id << " at chr " << chr + 1 << " position " << bp << " haplotype " << get_haplotype_string(haplotype) << " between breakpoint " << j1l_id << " and " << j2r_id << endl;
     }
 
     // the other side of j1l and j2r are unaffected
@@ -1140,6 +1144,12 @@ public:
 
     p->nodes.push_back(jn->id);
     p->edges.push_back(aid);
+    // update adjacency direction based on current path
+    if(js->id == adj->junc_id2){
+      adj->is_inverted = true;
+    }else{
+      adj->is_inverted = false;
+    }
     jn->path_ID = p->id;
     adj->path_ID = p->id;
 
@@ -1680,7 +1690,7 @@ void update_end_junc(int last_jid_orig, int last_jid) {
       if(a->type == INTERVAL){
         breakpoint* j1 = breakpoints[a->junc_id1];
         breakpoint* j2 = breakpoints[a->junc_id2];
-        if(verbose){
+        if(verbose > 1){
           a->print();
           j1->print();
           j2->print();
@@ -1693,14 +1703,12 @@ void update_end_junc(int last_jid_orig, int last_jid) {
         int end = j2->pos;
         int jid_start = j1->id;
         int jid_end = j2->id;
-        // cout << cell_ID << "\t" << chr << "\t" << start << "\t" << end << "\t" << haplotype << "\n";
-
         haplotype_pos key{chr, haplotype, start, end, jid_start, jid_end};
         cn_by_pos[key]++;
       }
     }
 
-    if(verbose){
+    if(verbose > 1){
       cout << "\nOriginal interval and copy numbers after cell cycle" << endl;
       cout << "cell\tchr\thaplotype\tstart\tend\tJID_start\tJID_end\tCN\n";
       for(auto cnp : cn_by_pos){
@@ -1730,8 +1738,7 @@ void update_end_junc(int last_jid_orig, int last_jid) {
       cn_by_chr_hap[key1].push_back(intl);
     }
 
-
-    if(verbose){
+    if(verbose > 1){
       cout << "\nUnique intervals by chr and haplotype" << endl;
       cout << "cell\tchr\thaplotype\tstart\tend\tJID_start\tJID_end\tCN\n";
       for(auto cnp : cn_by_chr_hap){
@@ -1794,12 +1801,8 @@ void get_merged_interval(int verbose = 0){
         // cout << cell_ID << "\t" << chr << "\t" << haplotype << endl;
         vector<interval> intls = cnp.second;
         for(int i = 0; i < intls.size(); i++){
-          // cout << "loop here " << endl;
           interval intl = intls[i];
-          int start = intl.start;
-          int end = intl.end;
-          int cn = intl.cn;
-          cout << cell_ID << "\t" << chr + 1 << "\t" << get_haplotype_string(haplotype) << "\t" << start << "\t" << end << "\t"  << cn << "\n";
+          cout << cell_ID << "\t" << chr + 1 << "\t" << get_haplotype_string(haplotype) << "\t" << intl.start << "\t" << intl.end  << "\t" << intl.jid_start << "\t" << intl.end << "\t"  << intl.cn << "\n";
         }
       }
     }
@@ -1835,7 +1838,7 @@ void get_merged_interval(int verbose = 0){
       cout << "\nbreakpoints for each chr after merging regions with the same CN" << endl;
       for(auto bpc : bps_by_chr){
         int chr = bpc.first;
-        cout << chr << ":";
+        cout << chr + 1 << ":";
         for(auto bp : bpc.second){
           cout << " " << bp;
         }
@@ -1860,8 +1863,7 @@ void get_merged_interval(int verbose = 0){
       }
 
       if(verbose){
-        cout << "\nintervals for each chr" << endl;
-        cout << chr + 1 << ":";
+        cout << "\nintervals for chr" << chr + 1 << ":";
         for(auto intl : intls){
           cout << " (" << intl.first << "," << intl.second << ")";
         }
@@ -1869,6 +1871,7 @@ void get_merged_interval(int verbose = 0){
       }
 
       // find cns for each interval in each haplotype
+      if(verbose) cout << "CNs for haplotype A" << endl;
       map<pair<int, int>, int> cn_A;
       pair<int, int> key(chr, 0);
       vector<interval> cnsA = cn_by_chr_hap_merged[key];
@@ -1883,8 +1886,9 @@ void get_merged_interval(int verbose = 0){
         }
       }
 
+      if(verbose) cout << "CNs for haplotype B" << endl;
       map<pair<int, int>, int> cn_B;
-      pair<int, int> key1(chr, 1);
+      pair<int, int> key1(chr, 1);     
       vector<interval> cnsB = cn_by_chr_hap_merged[key1];
       for(auto intl : intls){
         for(auto cnp : cnsB){
@@ -1897,7 +1901,8 @@ void get_merged_interval(int verbose = 0){
         }
       }
 
-      for(auto intl : intls){
+      if(verbose) cout << "CNs for segment" << endl;
+      for(auto intl : intls){       
         segment* s = new segment(sid++, cell_ID, chr, intl.first, intl.second, cn_A[intl], cn_B[intl]);
         this->segments.push_back(s);
         if(verbose) s->print();

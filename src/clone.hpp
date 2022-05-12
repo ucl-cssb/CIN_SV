@@ -375,10 +375,10 @@ public:
                  Cell_ptr dcell2 = new Cell(cID2, rID, ncell->time_occur + t);
                  dcell2->copy_parent((*rcell));
 
-                // this->n_cycle++;
-                rcell->do_cell_cycle(dcell1, dcell2, n_telo_fusion, n_complex_path, n_path_break, verbose);
+                 // this->n_cycle++;
+                 rcell->do_cell_cycle(dcell1, dcell2, n_telo_fusion, n_complex_path, n_path_break, verbose);
 
-                this->ntot = this->ntot + 2;
+                 this->ntot = this->ntot + 2;
 
                  if(model.fitness != 0){
                      if(verbose > 1){
@@ -401,9 +401,7 @@ public:
                   this->cells.push_back(dcell1);
                   this->cells.push_back(dcell2);
                  }
-             }
-             // death event if b<r<b+d
-             else if(rb >= rbrate && rb < rbrate + rdrate){
+             }else if(rb >= rbrate && rb < rbrate + rdrate){
                  // cout << " death event" << endl;
                  // if(verbose > 1){
                  //   cout << "Select cell " << rID << " with " << rcell->n_dsb << " DSBs and birth rate " << rcell->birth_rate << ", death rate " << rcell->death_rate << " to disappear" << endl;

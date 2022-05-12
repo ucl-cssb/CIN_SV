@@ -46,7 +46,7 @@ int main(int argc, char const *argv[]) {
     int use_std;
 
     string outdir, suffix; // output
-    int write_shatterseek, write_cicos, write_sumstats, write_genome;
+    int write_shatterseek, write_circos, write_sumstats, write_genome;
 
     unsigned long seed;
     int track_all;
@@ -101,7 +101,7 @@ int main(int argc, char const *argv[]) {
 
       // options related to output
       ("suffix", po::value<string>(&suffix)->default_value(""), "suffix of output file")
-      ("write_cicos", po::value<int>(&write_cicos)->default_value(0), "whether or not to write files for circos plot")
+      ("write_circos", po::value<int>(&write_circos)->default_value(0), "whether or not to write files for circos plot")
       ("write_shatterseek", po::value<int>(&write_shatterseek)->default_value(0), "whether or not to write files for shatterseek")
       ("write_sumstats", po::value<int>(&write_sumstats)->default_value(1), "whether or not to write summary statistics")
       ("write_genome", po::value<int>(&write_genome)->default_value(0), "whether or not to write derivative genome")
@@ -156,7 +156,9 @@ int main(int argc, char const *argv[]) {
     genome g(1);
     start_cell->g = g;
     Clone* s = new Clone(1, 0);
+    cout << "Start cell growth " << endl;
     s->grow_with_dsb(start_cell, start_model, n_cell, track_all, verbose);
+    cout << "Finish cell growth " << endl;
 
     vector<Cell_ptr> final_cells;
     if(track_all){
@@ -167,13 +169,18 @@ int main(int argc, char const *argv[]) {
     }
 
     // merge segments with the same CN by haplotype
+    cout << "\nComputing CN for each cell " << endl;
     for(auto cell : final_cells){
-      cell->g.calculate_segment_cn();
+      cout << "Cell " << cell->cell_ID << endl;
+      // verbose = 1;
+      // cell->print_bp_adj();
+      cell->g.calculate_segment_cn(verbose);
     }
 
     string filetype = ".tsv";
 
-    if(write_cicos){
+    if(write_circos){
+      cout << "\nWrite output for circos plot" << endl;
       for(auto cell : final_cells){
         string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
         string fname_sv = outdir +"/" + "sv_data_c" + midfix + filetype;
@@ -185,6 +192,7 @@ int main(int argc, char const *argv[]) {
 
     // write CN and SV data to tsv - for ShatterSeek
     if(write_shatterseek){
+      cout << "\nWrite output for ShatterSeek" << endl;
       for(auto cell : final_cells){
         string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
         string fname_sv_ss = outdir +"/" + "SVData_c" + midfix + filetype;
@@ -203,6 +211,7 @@ int main(int argc, char const *argv[]) {
     fout.close();
 
     if(write_sumstats){
+      cout << "\nWrite output for summary statistics" << endl;
       for(auto cell : final_cells){
         string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
         string fname_stat = outdir +"/" + "sumStats_total_c" + midfix + filetype;
@@ -212,6 +221,7 @@ int main(int argc, char const *argv[]) {
     }
 
     if(write_genome){
+      cout << "Write output for the derivative genome" << endl;
       for(auto cell : final_cells){
         string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
         string fname = outdir +"/" + "genome_c" + midfix + filetype;
