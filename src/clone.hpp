@@ -363,9 +363,9 @@ public:
              double rb = runiform(r, 0, rmax);
              // cout << "random number " << rb << endl;
              if(rb < rbrate){
-                 // if(verbose > 1){
-                      cout << "Select cell " << rID << " with " << rcell->n_dsb << " DSBs and birth rate " << rcell->birth_rate << ", death rate " << rcell->death_rate << " to divide" << endl;
-                 // }
+                 if(verbose > 0){
+                    cout << "Select cell " << rID << " with " << rcell->n_dsb << " DSBs and birth rate " << rcell->birth_rate << ", death rate " << rcell->death_rate << " to divide" << endl;
+                 }
                  // generate two daughter cells
                  int cID1 = this->ntot + 1;
                  Cell_ptr dcell1 = new Cell(cID1, rID, ncell->time_occur + t);

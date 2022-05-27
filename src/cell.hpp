@@ -118,6 +118,21 @@ public:
     int n_dsb;    // number of double strand breaks during cell division
     int n_unrepaired; // number of unrepaired double strand breaks
 
+
+    int n_bp = 0;  // each breakpoint may have at most two connections
+    int n_del = 0;
+    int n_dup = 0;
+    int n_h2h = 0;
+    int n_t2t = 0;
+    int n_tra = 0;
+    int n_circle = 0;
+
+    // count events by chromosome
+    map<int, int> chr_n_bp;
+    map<int, vector<int>> chr_type_num;
+    set<int> bp_unique; // a DBS may introduce two breakpoints with different IDs
+    set<vector<int>> dbs_unique; // may be fewer than nDSB + nMbreak due to uneven distribution into daughter cells
+
     genome g; // each cell has a genome
 
     ~Cell() = default;
@@ -141,7 +156,6 @@ public:
         // dsb_rate = 0;
         n_dsb  = 0;
         n_unrepaired = 0;
-        // n_complex_path = 0;
     }
 
 
@@ -296,7 +310,7 @@ public:
     // There may be two copies of the same path assigned to the same daughter cell 
     // need to assign different IDs for duplicated path (indicated by n1) and not affect the path to process later
     void inherit_path_one(path* p, Cell_ptr dcell1, int& max_pID, int ncopy = 1, int verbose = 0){
-      if(verbose){
+      if(verbose > 1){
         cout << "inherit path " << p->id + 1 << " to cell " << dcell1->cell_ID << endl;
         p->print();
       }
@@ -388,7 +402,7 @@ public:
       if(ncopy > 1){ 
          assert(max_pID > 0);     
          p1->id = ++max_pID;
-         if(verbose){
+         if(verbose > 1){
            cout << "new path ID " << p1->id + 1 << endl;
            p1->print();
          }
@@ -401,14 +415,16 @@ public:
         double u = runiform(r, 0, 1);
         assert(max_pID < 0);  // no need to update path ID
         if(u < 0.5){
-          // if(verbose) 
-          cout << "Distributing split path " << p->id + 1 << " to daughter cell " << dcell1->cell_ID << endl;
-          write_path(p, cout);
+          if(verbose > 0){
+            cout << "Distributing split path " << p->id + 1 << " to daughter cell " << dcell1->cell_ID << endl;
+            write_path(p, cout);
+          }
           inherit_path_one(p, dcell1, max_pID, 1, verbose);
         }else{
-          // if(verbose) 
-          cout << "Distributing split path " << p->id + 1 << " to daughter cell " << dcell2->cell_ID << endl;
-          write_path(p, cout);
+          if(verbose > 0){
+            cout << "Distributing split path " << p->id + 1 << " to daughter cell " << dcell2->cell_ID << endl;
+            write_path(p, cout);
+          }           
           inherit_path_one(p, dcell2, max_pID, 1, verbose);
         }
         if(verbose > 1) cout << "Finish path distributing" << endl;
@@ -421,8 +437,8 @@ public:
     // p2split will be split into n_centromere paths, which are distributed randomly
     void segregate_polycentric(path* p2split, Cell_ptr dcell1, Cell_ptr dcell2, int& pid, vector<path*>& new_paths, int verbose = 0){
       // verbose = 1;      
-      write_path(p2split, cout);
-      if(verbose){      
+      if(verbose > 0) write_path(p2split, cout);
+      if(verbose > 1){      
         p2split->print();
       }
 
@@ -450,7 +466,7 @@ public:
         }
       }
 
-      if(verbose){
+      if(verbose > 1){
         cout << "Adjacent intervals with " << adjID_pair_withcent.size() + 1 << " centromeres: " << endl;
         for(auto pair : adjID_pair_withcent){
           cout << pair.first << "\t" << pair.second << endl;
@@ -484,7 +500,7 @@ public:
           int jid1 = adj->junc_id1;
           int jid2 = adj->junc_id2;
           assert(g.breakpoints[jid1]->chr == g.breakpoints[jid2]->chr);         
-          if(verbose){
+          if(verbose > 1){
             cout << "add break on left side of second interval " << adj->id << endl;
             adj->print();
             g.breakpoints[jid1]->print();
@@ -515,7 +531,7 @@ public:
           int jid1 = adj->junc_id1;
           int jid2 = adj->junc_id2;
           assert(g.breakpoints[jid1]->chr == g.breakpoints[jid2]->chr);
-          if(verbose){
+          if(verbose > 1){
             cout << "add break on right side of first interval " << adj->id << endl;
             adj->print();
             g.breakpoints[jid1]->print();
@@ -543,7 +559,7 @@ public:
           }                  
         }
 
-        if(verbose) cout << ps << "\t" << pe << endl;
+        if(verbose > 1) cout << ps << "\t" << pe << endl;
         assert(ps < pe);
         bp = (int)runiform(r, ps, pe);
         left_jid = adj->junc_id1;
@@ -582,9 +598,11 @@ public:
           }
         }
  
-        cout << "   path break " << i + 1 << " at position " << bp << " chr " << chr + 1 << " haplotype " << get_haplotype_string (haplotype) << endl;
-        if(verbose) cout << "   with left breakpoint " << left_jid << " and right breakpoint " << right_jid << endl;
-        
+        if(verbose > 0){
+          cout << "   path break " << i + 1 << " at position " << bp << " chr " << chr + 1 << " haplotype " << get_haplotype_string (haplotype) << endl;
+          if(verbose > 1) cout << "   with left breakpoint " << left_jid << " and right breakpoint " << right_jid << endl;
+        }
+       
         i++;
         g.add_new_breakpoint(jid, aid, chr, bp, haplotype, left_jid, right_jid, false, verbose);
         // one breakpoint is end of a path, the other is the start of another path, depending on the orientations
@@ -603,7 +621,7 @@ public:
 
       // split paths at once to save cost
       // no need to rejoin paths after splitting, just distribute to different daughter cells
-      if(verbose){
+      if(verbose > 1){
         cout << "\nStart breakpoints of split paths: " << endl;
         for(auto j : junc_starts){
           cout << j->id << " at path " << j->path_ID + 1 << endl;
@@ -614,12 +632,12 @@ public:
       int nnode = 0;
       // recompute path from each breakpoint to avoid complexity of tracking each broken adjacency
       // The path starting from both path breaks will be distributed twice
-      cout << "Segregating into " << junc_starts.size() << " subpaths for path " << p2split->id + 1 << endl;
+      if(verbose > 0) cout << "Segregating into " << junc_starts.size() << " subpaths for path " << p2split->id + 1 << endl;
       for(auto js : junc_starts){
         path* p = new path(++pid, this->cell_ID, COMPLETE);
         new_paths.push_back(p);  
 
-        if(verbose){
+        if(verbose > 1){
           cout << "new path " << p->id + 1 << " at breakpoint " << js->id << endl;
           js->print();
         }
@@ -646,17 +664,17 @@ public:
     // introduce DSB and repair breaks (adding variant adjacencies)
     void g1(int n_dsb, int n_unrepaired, int verbose = 0){
       // verbose = 1;
-      cout << "\nIntroducing " << n_dsb << " DSBs" << endl;
+       if(verbose > 0) cout << "\nIntroducing " << n_dsb << " DSBs" << endl;
       g.generate_dsb(n_dsb, verbose);
 
       int n_torepair = n_dsb - n_unrepaired;
-      cout << "\nRepairing " << n_torepair << " DSBs" << endl;
+      if(verbose > 0) cout << "\nRepairing " << n_torepair << " DSBs" << endl;
       vector<breakpoint*> junc2repair;
       if(n_torepair > 0){      
         g.repair_dsb(n_unrepaired, junc2repair, verbose);
       }
 
-      if(verbose){
+      if(verbose > 1){
         cout << "\nRemaing breakpoints to repair: " << endl;
         for(auto j: junc2repair){
             j->print();
@@ -664,10 +682,10 @@ public:
         cout << "\nConnecting breakpoints to paths" << endl;
       }
 
-      cout << "\nGetting the derivative genome" << endl;
+      if(verbose > 0) cout << "\nGetting the derivative genome" << endl;
       g.get_derivative_genome(verbose);
 
-      if(verbose){
+      if(verbose > 1){
         for(auto p: g.paths){
           p->print();
         }
@@ -688,21 +706,24 @@ public:
         // replicates incomplete paths by adding new breakpoints (S) and path fusion
         if(p->type != COMPLETE && !p->is_circle){  
           if(p->type == NONTEL && p->n_centromere > 0) continue;   // skip these paths to avoid circular DNA with centromere
-          cout << "Duplicating incomplete path " << p->id + 1 << endl;
-          write_path(p, cout);
+          if(verbose > 0){
+            cout << "Duplicating incomplete path " << p->id + 1 << endl;
+            write_path(p, cout);
+          }
 
+          // TODO: distinguish fusion at which cell cycle to see its linkage with chromothripsis?
           if(p->type == PTEL || p->type == QTEL){
             n_telo_fusion += 1;
           }
 
-          if(verbose){ 
+          if(verbose > 1){ 
             cout << "before" << endl;         
             p->print();
           }
 
           g.duplicate_path(*p, verbose);
 
-          if(verbose){
+          if(verbose > 1){
             cout << "after" << endl; 
             p->print();
           }
@@ -716,7 +737,7 @@ public:
       int n1 = 0;  // times this path is distributed to cell 1
       int n2 = 0;  // times this path is distributed to cell 2
 
-      cout << "\nRandom distribution of path " << p->id + 1 << endl;
+      if(verbose > 0) cout << "\nRandom distribution of path " << p->id + 1 << endl;
 
       for(int i = 0; i < 2; i++){  // imitate duplication       
         string desc = "";
@@ -730,11 +751,11 @@ public:
         // need to change path ID when the same path gets distributed to the same cell twice
         if(u < 0.5){
           n1++;
-          cout << "Distributing path " << p->id + 1 << desc << " to daughter cell " << dcell1->cell_ID << endl;
+          if(verbose > 0) cout << "Distributing path " << p->id + 1 << desc << " to daughter cell " << dcell1->cell_ID << endl;
           inherit_path_one(p, dcell1, max_pID, n1, verbose);
         }else{
           n2++;
-          cout << "Distributing path " << p->id + 1 << desc << " to daughter cell " << dcell2->cell_ID << endl;
+          if(verbose > 0) cout << "Distributing path " << p->id + 1 << desc << " to daughter cell " << dcell2->cell_ID << endl;
           inherit_path_one(p, dcell2, max_pID, n2, verbose);
         }
       }
@@ -755,25 +776,25 @@ public:
       int max_pID = find_max_pathID();
       vector<path*> new_paths;
       for(auto p : this->g.paths){
-        if(verbose) p->print();
+        if(verbose > 1) p->print();
         if(!p->is_circle){   // a circular path may have even number of nodes during path replacation
           assert(p->nodes.size() % 2 == 0);
         }
 
         if(p->n_centromere == 1){  // balanced distribution
-          if(verbose) cout << "balanced distribution of path " << p->id + 1 << endl;
+          if(verbose > 1) cout << "balanced distribution of path " << p->id + 1 << endl;
           inherit_path_both(p, dcell1, dcell2);
         }else if(p->n_centromere == 0 || p->is_circle){  // may be lost finally in some cells
           // delay later to get all the breakpoints
         }else{
           // if this path has >1 centromeres, duplicated and random breaking for each copy
-          if(verbose) cout << "complex distribution of path " << p->id + 1 << endl;
+          if(verbose > 1) cout << "complex distribution of path " << p->id + 1 << endl;
           n_complex_path += 1;
           n_path_break += p->n_centromere - 1;
           // for(int i = 0; i < 2; i++){ // do it twice to iminate duplication ?
           // }         
           segregate_polycentric(p, dcell1, dcell2, max_pID, new_paths, verbose);
-          if(verbose) cout << "\nFinish complex splitting" << endl;
+          if(verbose > 1) cout << "\nFinish complex splitting" << endl;
         }
       }
 
@@ -782,11 +803,11 @@ public:
       for(auto p : this->g.paths){
          if(p->n_centromere == 0 || p->is_circle){
            random_split(p, dcell1, dcell2, max_pID, verbose);
-           write_path(p, cout);
+           if(verbose > 0) write_path(p, cout);
          }
       }
 
-      if(verbose){
+      if(verbose > 1){
         // path ID follows those from parent cell
         cout << "\npath after split in 1st daughter cell" << endl;
         cout << "#path after splitting: " << dcell1->g.paths.size() << endl;
@@ -890,41 +911,21 @@ public:
         }
     }
 
+
     // summary for the whole genome of each cell, computed from the set of adjacencies
-    // TO exclude chromosome end when counting breakpoints
-    void write_summary_stats(string fname, string fname_chr){
-      // writing summary statistics for all chromosomes
-      ofstream fout(fname);
-      // nBP includes chromosome ends
-      fout << "cycleID\tcellID\tnDSB\tnUnrepair\tnDBS_unique\tnBP_unique\tnBP\tnDel\tnDup\tnH2HInv\tnT2TInv\tnTra\tnCircle\n";
-      // writing summary statistics for each chromosome
-      ofstream fout_chr(fname_chr);
-      fout_chr << "cycleID\tcellID\tchr\tnBP\tnDel\tnDup\tnH2HInv\tnT2TInv\tnTra\n";
-
-      int n_bp = 0;  // each breakpoint may have at most two connections
-      int n_del = 0;
-      int n_dup = 0;
-      int n_h2h = 0;
-      int n_t2t = 0;
-      int n_tra = 0;
-      int n_circle = 0;
-      // int n_complex_path = 0; // should be 0 in the final cells
-
-      // count events by chromosome
-      map<int, int> chr_n_bp;
-      map<int, vector<int>> chr_type_num;
+    // TODO: exclude chromosome end when counting breakpoints
+    void get_summary_stats(){
       for(int i  = 0; i < NUM_CHR; i++){
         chr_n_bp[i] = 0;
         vector<int> n_sv(NUM_SVTYPE, 0);
         chr_type_num[i] = n_sv;
       }
 
-      set<int> bp_unique; // a DBS may introduce two breakpoints with different IDs
-      set<vector<int>> dbs_unique; // may be fewer than nDSB + nMbreak due to uneven distribution into daughter cells
 
       for(auto adjm : g.adjacencies){
         adjacency* adj = adjm.second;
         int type = adj->sv_type;
+        if(adj->type != VAR) continue;   // only need to consider variant adjacencies
         int chr1 = g.breakpoints[adj->junc_id1]->chr;
         int chr2 = g.breakpoints[adj->junc_id2]->chr;
 
@@ -973,10 +974,23 @@ public:
         if(p->n_centromere > 1){
           cout << "Path " << p->id + 1 << " has " << p->n_centromere << " centromeres!" << endl;
           p->print();
+          exit(-1);
         }
         if(p->is_circle) n_circle += 1;
       }
+    }
 
+    
+    // Assume the summary statistics have been computed
+    void write_summary_stats(string fname, string fname_chr){
+      // writing summary statistics for all chromosomes
+      ofstream fout(fname);
+      // nBP includes chromosome ends
+      fout << "cycleID\tcellID\tnDSB\tnUnrepair\tnDBS_unique\tnBP_unique\tnBP\tnDel\tnDup\tnH2HInv\tnT2TInv\tnTra\tnCircle\n";
+      // writing summary statistics for each chromosome
+      ofstream fout_chr(fname_chr);
+      fout_chr << "cycleID\tcellID\tchr\tnBP\tnDel\tnDup\tnH2HInv\tnT2TInv\tnTra\n";
+   
       // for(auto dbs : dbs_unique){
       //   cout << dbs[0] << "\t" << dbs[1] << "\t" << dbs[2] << "\n";
       // }
@@ -984,7 +998,7 @@ public:
       fout << to_string(div_occur) + "\t" + to_string(cell_ID) + "\t" + to_string(n_dsb) + "\t" + to_string(n_unrepaired)  + "\t" + to_string(dbs_unique.size()) + "\t" + to_string(bp_unique.size()) + "\t" + to_string(n_bp) + "\t" + to_string(n_del) + "\t" + to_string(n_dup) + "\t" + to_string(n_h2h) + "\t" + to_string(n_t2t)  + "\t" + to_string(n_tra) + "\t" + to_string(n_circle) + "\n";
       fout.close();
 
-      for(int i  = 0; i < NUM_CHR; i++){
+      for(int i = 0; i < NUM_CHR; i++){
         fout_chr << to_string(div_occur) + "\t" + to_string(cell_ID) + "\t" + to_string(i + 1) + "\t" << chr_n_bp[i] << "\t" << chr_type_num[i][DEL] << "\t" << chr_type_num[i][DUP] << "\t" << chr_type_num[i][H2HINV] << "\t" << chr_type_num[i][T2TINV] << "\t" << chr_type_num[i][TRA] << "\n";
       }
       fout_chr.close();
@@ -1076,35 +1090,35 @@ public:
     void do_cell_cycle(Cell_ptr dcell1, Cell_ptr dcell2, int& n_telo_fusion, int& n_complex_path, int& n_path_break, int verbose = 0){
       // verbose = 2;
       // introduces DSBs into the genome prior to G1 repairs
-      if(verbose){
+      if(verbose > 1){
         cout << "Original genome: " << endl;
         g.print();
       }
 
-      cout << "\nG1 phase" << endl;
+      if(verbose > 0) cout << "\nG1 phase" << endl;
       g1(n_dsb, n_unrepaired, verbose);
 
-      cout << "\nSphase and G2" << endl;
+      if(verbose > 0) cout << "\nSphase and G2" << endl;
       sphase_g2(n_telo_fusion, verbose);
 
-      cout << "\nMitosis phase" << endl;
+      if(verbose > 0) cout << "\nMitosis phase" << endl;
       mitosis(dcell1, dcell2, n_complex_path, n_path_break, verbose);
 
-      if(verbose > 1){
+      if(verbose > 2){
         cout << "\nnumber of DSBs: " << n_dsb << endl;
         this->print_bp_adj();
         dcell1->print_bp_adj();
         dcell2->print_bp_adj();
       }
 
-      // if(verbose) cout << "computing segments in current cell" << endl;
+      // if(verbose > 1) cout << "computing segments in current cell" << endl;
       // g.calculate_segment_cn(verbose);
-      // if(verbose) cout << "\ncomputing segments in daughter cell " << dcell1->cell_ID << endl;
+      // if(verbose > 1) cout << "\ncomputing segments in daughter cell " << dcell1->cell_ID << endl;
       // dcell1->g.calculate_segment_cn(verbose);
-      // if(verbose) cout << "\ncomputing segments in daughter cell " << dcell2->cell_ID << endl;
+      // if(verbose > 1) cout << "\ncomputing segments in daughter cell " << dcell2->cell_ID << endl;
       // dcell2->g.calculate_segment_cn(verbose);
 
-      cout << "\nOne cell cycle finish!\n";
+      if(verbose > 0) cout << "\nOne cell cycle finish!\n";
     }
 
 

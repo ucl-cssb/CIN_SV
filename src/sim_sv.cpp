@@ -47,6 +47,7 @@ int main(int argc, char const *argv[]) {
 
     string outdir, suffix; // output
     int write_shatterseek, write_circos, write_sumstats, write_genome;
+    int write_sumstats_only;
 
     unsigned long seed;
     int track_all;
@@ -105,6 +106,7 @@ int main(int argc, char const *argv[]) {
       ("write_shatterseek", po::value<int>(&write_shatterseek)->default_value(0), "whether or not to write files for shatterseek")
       ("write_sumstats", po::value<int>(&write_sumstats)->default_value(1), "whether or not to write summary statistics")
       ("write_genome", po::value<int>(&write_genome)->default_value(0), "whether or not to write derivative genome")
+      // ("write_sumstats_only", po::value<int>(&write_sumstats_only)->default_value(0), "whether or not to write summary statistics only for efficient inference")
 
       ("track_all", po::value<int>(&track_all)->default_value(0), "whether or not to keep track of all cells")
       ("seed", po::value<unsigned long>(&seed)->default_value(0), "seed used for generating random numbers")
@@ -134,7 +136,7 @@ int main(int argc, char const *argv[]) {
 
     unsigned long rseed = setup_rng(seed);
 
-    cout << "Random seed: " << rseed << endl;
+    if(verbose > 0) cout << "Random seed: " << rseed << endl;
 
     // cout << "Using Boost "
     //   << BOOST_VERSION / 100000     << "."  // major version
@@ -156,9 +158,9 @@ int main(int argc, char const *argv[]) {
     genome g(1);
     start_cell->g = g;
     Clone* s = new Clone(1, 0);
-    cout << "Start cell growth " << endl;
+    if(verbose > 0) cout << "Start cell growth " << endl;
     s->grow_with_dsb(start_cell, start_model, n_cell, track_all, verbose);
-    cout << "Finish cell growth " << endl;
+    if(verbose > 0) cout << "Finish cell growth " << endl;
 
     vector<Cell_ptr> final_cells;
     if(track_all){
@@ -169,12 +171,15 @@ int main(int argc, char const *argv[]) {
     }
 
     // merge segments with the same CN by haplotype
-    cout << "\nComputing CN for each cell " << endl;
-    for(auto cell : final_cells){
-      cout << "Cell " << cell->cell_ID << endl;
-      // verbose = 1;
-      // cell->print_bp_adj();
-      cell->g.calculate_segment_cn(verbose);
+    if(verbose > 0){
+      cout << "\nComputing CN for each cell " << endl;
+      for(auto cell : final_cells){
+        cout << "Cell " << cell->cell_ID << endl;
+        // verbose = 1;
+        // cell->print_bp_adj();
+        cell->g.calculate_segment_cn(verbose);
+      }
+      s->print_all_cells(final_cells, verbose);
     }
 
     string filetype = ".tsv";
@@ -201,16 +206,28 @@ int main(int argc, char const *argv[]) {
       }
     }
 
-    s->print_all_cells(final_cells, verbose);
-
-    // write summary statistics in the simulation
-    string fname_stat_sim = outdir +"/" + "sumStats_sim" + filetype;
-    ofstream fout(fname_stat_sim);
-    fout << "nCell\tnDSB\tnUnrepair\tnComplex\tnMbreak\tnTelofusion\n";
-    fout << final_cells.size() << "\t" << n_dsb << "\t" << n_unrepaired << "\t" + to_string(s->n_complex_path) + "\t" + to_string(s->n_path_break) + "\t" + to_string(s->n_telo_fusion) << endl;
-    fout.close();
+    // compute and output summary statistics for inference
+    for(auto cell : final_cells){
+      cell->get_summary_stats();
+      // int nSV = cell->n_dup + cell->n_del + cell->n_h2h + cell->n_t2t;
+      cout << cell->div_occur << "\t" << cell->cell_ID;
+      //  << "\t" << 0 << "\t" << cell->bp_unique.size() << "\t" << nSV << endl;
+      for(int i = 0; i < NUM_CHR; i++){
+        int nSV_chr = cell->chr_type_num[i][DEL] + cell->chr_type_num[i][DUP] + cell->chr_type_num[i][H2HINV] + cell->chr_type_num[i][T2TINV];
+        // cout << cell->div_occur << "\t" << cell->cell_ID << "\t" << i+1 << "\t" << cell->chr_n_bp[i] << "\t" << nSV_chr << endl;
+        cout << "\t" << cell->chr_n_bp[i] << "\t" << nSV_chr;
+      }
+      cout << endl;
+    }
 
     if(write_sumstats){
+      // write summary statistics in the simulation
+      string fname_stat_sim = outdir +"/" + "sumStats_sim" + filetype;
+      ofstream fout(fname_stat_sim);
+      fout << "nCell\tnDSB\tnUnrepair\tnComplex\tnMbreak\tnTelofusion\n";
+      fout << final_cells.size() << "\t" << n_dsb << "\t" << n_unrepaired << "\t" + to_string(s->n_complex_path) + "\t" + to_string(s->n_path_break) + "\t" + to_string(s->n_telo_fusion) << endl;
+      fout.close();
+
       cout << "\nWrite output for summary statistics" << endl;
       for(auto cell : final_cells){
         string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
