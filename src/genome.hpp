@@ -1432,7 +1432,6 @@ public:
       paths.push_back(p);
     }
 
-
     // all breakpoints should be in some path
     for(auto am : adjacencies){
       adjacency* a = am.second;

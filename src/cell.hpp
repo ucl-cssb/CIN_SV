@@ -128,8 +128,10 @@ public:
     int n_circle = 0;
 
     // count events by chromosome
-    map<int, int> chr_n_bp;
+    map<int, set<vector<int>>> chr_bp_unique;  // use position to be consistent with real data
     map<int, vector<int>> chr_type_num;
+    map<int, int> chr_n_osc2;
+    map<int, int> chr_n_osc3;
     set<int> bp_unique; // a DBS may introduce two breakpoints with different IDs
     set<vector<int>> dbs_unique; // may be fewer than nDSB + nMbreak due to uneven distribution into daughter cells
 
@@ -436,12 +438,35 @@ public:
     // assume the path has 2 telomeres at the ends
     // p2split will be split into n_centromere paths, which are distributed randomly
     void segregate_polycentric(path* p2split, Cell_ptr dcell1, Cell_ptr dcell2, int& pid, vector<path*>& new_paths, int verbose = 0){
-      // verbose = 1;      
+      // verbose = 2;      
       if(verbose > 0) write_path(p2split, cout);
       if(verbose > 1){      
         p2split->print();
       }
 
+      // remove last connection if the path is circular 
+      if(p2split->is_circle){
+        breakpoint* js = g.breakpoints[p2split->nodes[0]];       
+        int aid = p2split->edges.back();
+        adjacency* al = g.adjacencies[aid];
+        int js_left = js->left_jid;
+        int js_right = js->right_jid;
+        int al1 = al->junc_id1;
+        int al2 = al->junc_id2;
+        if(js_left == al1 || js_left == al2){
+          js->left_jid = -1;  
+        }else{
+          assert(js_right == al1 || js_right == al2);
+          js->right_jid = -1;  
+        }       
+        g.adjacencies.erase(aid);
+        p2split->nodes.pop_back();
+        p2split->edges.pop_back();
+        if(verbose > 1){
+          cout << "remove last connection " << aid << " with left breakpoint " << al1 << " and right breakpoint " << al2 << " as the path is circular" << endl;
+          p2split->print();
+        }
+      }
       // Find two intervals containing each centromere
       int nbreak = p2split->n_centromere - 1;     
       vector<pair<int, int>> adjID_pair_withcent;
@@ -685,7 +710,8 @@ public:
       if(verbose > 0) cout << "\nGetting the derivative genome" << endl;
       g.get_derivative_genome(verbose);
 
-      if(verbose > 1){
+      if(verbose > 0){
+        cout << "\nAll paths in the derivative genome" << endl;
         for(auto p: g.paths){
           p->print();
         }
@@ -784,10 +810,10 @@ public:
         if(p->n_centromere == 1){  // balanced distribution
           if(verbose > 1) cout << "balanced distribution of path " << p->id + 1 << endl;
           inherit_path_both(p, dcell1, dcell2);
-        }else if(p->n_centromere == 0 || p->is_circle){  // may be lost finally in some cells
+        }else if(p->n_centromere == 0){  // may be lost finally in some cells
           // delay later to get all the breakpoints
         }else{
-          // if this path has >1 centromeres, duplicated and random breaking for each copy
+          // if this path has >1 centromeres, maybe circular, duplicated and random breaking for each copy
           if(verbose > 1) cout << "complex distribution of path " << p->id + 1 << endl;
           n_complex_path += 1;
           n_path_break += p->n_centromere - 1;
@@ -801,7 +827,7 @@ public:
       g.paths.insert(g.paths.begin(), new_paths.begin(), new_paths.end());
       max_pID = find_max_pathID();  // new paths may be added before
       for(auto p : this->g.paths){
-         if(p->n_centromere == 0 || p->is_circle){
+         if(p->n_centromere == 0){
            random_split(p, dcell1, dcell2, max_pID, verbose);
            if(verbose > 0) write_path(p, cout);
          }
@@ -912,31 +938,91 @@ public:
     }
 
 
+    
+
+    // count number of oscillating CNs by chromosome
+    void get_oscillating_CN(int verbose = 0){
+      // group segments by chr 
+      map<int, vector<segment*>> chr_segments;
+      for(auto s : g.segments){
+        chr_segments[s->chr].push_back(s);
+      }
+
+      for(int chr = 0; chr < NUM_CHR; chr++){
+        vector<int> tcns;
+        vector<int> tdiff;        
+        int nseg = chr_segments[chr].size();
+        if(verbose > 0) cout << chr << "\t" << nseg << endl;
+        if(nseg == 0){
+          chr_n_osc2[chr] = 0;
+          chr_n_osc3[chr] = 0;  
+          continue;       
+        }
+        if(nseg == 1){
+          chr_n_osc2[chr] = 1;
+          chr_n_osc3[chr] = 1;  
+          continue;       
+        }
+        vector<int> v3_states(nseg, 0);
+        vector<int> v2_states(nseg, 0);
+
+        for(auto s : chr_segments[chr]){
+          // s->print();
+          int tcn = s->cnA + s->cnB;
+          tcns.push_back(tcn);
+        }
+
+        for(int i = 0; i < nseg - 2; i++){
+          int dcn = tcns[i] - tcns[i + 2];
+          if(dcn == 0){
+            v3_states[i] = 1;
+            v2_states[i] = 1;
+          }else if(abs(dcn) == 1){
+            v3_states[i] = 1;
+          }else{
+
+          }
+          if(verbose > 0) cout << dcn << "\t" << v2_states[i] << "\t" << v3_states[i] << endl;
+        }
+
+
+        int n_osc2 = find_max_size(1, v2_states) + 2;
+        int n_osc3 = find_max_size(1, v3_states) + 2;
+        chr_n_osc2[chr] = n_osc2;
+        chr_n_osc3[chr] = n_osc3;
+      }
+
+    }
+
+
     // summary for the whole genome of each cell, computed from the set of adjacencies
-    // TODO: exclude chromosome end when counting breakpoints
-    void get_summary_stats(){
+    void get_summary_stats(int verbose = 0){
+      get_oscillating_CN(verbose);
+
       for(int i  = 0; i < NUM_CHR; i++){
-        chr_n_bp[i] = 0;
         vector<int> n_sv(NUM_SVTYPE, 0);
         chr_type_num[i] = n_sv;
       }
 
-
       for(auto adjm : g.adjacencies){
         adjacency* adj = adjm.second;
         int type = adj->sv_type;
-        if(adj->type != VAR) continue;   // only need to consider variant adjacencies
+        if(adj->type != VAR) continue;   // only need to consider variant adjacencies 
         int chr1 = g.breakpoints[adj->junc_id1]->chr;
         int chr2 = g.breakpoints[adj->junc_id2]->chr;
 
+        // exclude chromosome end when counting breakpoints (chr_ends should only appear in intervals)
+        // each breakpoint connects with just one variant adjacency
         if(find(g.chr_ends.begin(), g.chr_ends.end(), adj->junc_id1) == g.chr_ends.end()){
           n_bp += 1;
           bp_unique.insert(adj->junc_id1);
+         
 
           int pos1 = g.breakpoints[adj->junc_id1]->pos;
           int haplotype1 = g.breakpoints[adj->junc_id1]->haplotype;
           vector<int> dbs1{chr1, pos1, haplotype1};
           dbs_unique.insert(dbs1);
+          chr_bp_unique[chr1].insert(dbs1);
         }
 
         if(find(g.chr_ends.begin(), g.chr_ends.end(), adj->junc_id2) == g.chr_ends.end()){
@@ -947,17 +1033,15 @@ public:
           int haplotype2 = g.breakpoints[adj->junc_id2]->haplotype;
           vector<int> dbs2{chr2, pos2, haplotype2};
           dbs_unique.insert(dbs2);
+          chr_bp_unique[chr2].insert(dbs2);  // should be unique when counting directly
         }
 
         if(chr1 != chr2){
           assert(type == TRA);
           chr_type_num[chr1][type] += 1;
           chr_type_num[chr2][type] += 1;
-          chr_n_bp[chr1] += 1;
-          chr_n_bp[chr2] += 1;
         }else{
           chr_type_num[chr1][type] += 1;
-          chr_n_bp[chr1] += 2;
         }
 
         switch(type){
@@ -999,7 +1083,7 @@ public:
       fout.close();
 
       for(int i = 0; i < NUM_CHR; i++){
-        fout_chr << to_string(div_occur) + "\t" + to_string(cell_ID) + "\t" + to_string(i + 1) + "\t" << chr_n_bp[i] << "\t" << chr_type_num[i][DEL] << "\t" << chr_type_num[i][DUP] << "\t" << chr_type_num[i][H2HINV] << "\t" << chr_type_num[i][T2TINV] << "\t" << chr_type_num[i][TRA] << "\n";
+        fout_chr << to_string(div_occur) + "\t" + to_string(cell_ID) + "\t" + to_string(i + 1) + "\t" << chr_bp_unique[i].size() << "\t" << chr_type_num[i][DEL] << "\t" << chr_type_num[i][DUP] << "\t" << chr_type_num[i][H2HINV] << "\t" << chr_type_num[i][T2TINV] << "\t" << chr_type_num[i][TRA] << "\n";
       }
       fout_chr.close();
     }

@@ -160,7 +160,7 @@ template <typename T>
 void get_vals_from_str(vector<T>& vals, string str_vals, int num = 0){
     assert(str_vals != "");
     stringstream ss(str_vals);
-    if(num==0)   ss >> num;
+    if(num == 0)   ss >> num;
     for(int i = 0; i < num; i++){
         T d1;
         ss >> d1;
@@ -324,6 +324,40 @@ string get_sv_type_string(int type){
     default: type_str = "NO SV";
   }
   return type_str;
+}
+
+
+
+// Run length encoding a vector, find the size of the longest region with value x
+int find_max_size(int x, const vector<int>& vec){
+  int len = vec.size();
+  vector<int> rle_vec_val;
+  vector<int> rle_vec_len;
+
+  for(int i = 0; i < len; i++){
+    int count = 1;
+    while(vec[i] == vec[i+1] && i < len - 1){
+      count++;
+      i++;
+    }
+    rle_vec_val.push_back(vec[i]);
+    rle_vec_len.push_back(count);
+  }
+
+  bool zeros = std::all_of(vec.begin(), vec.end(), [](int i) { return i == 0; });
+
+  if(zeros){
+    return 0;
+  }else{
+    vector<int> x_lens;
+    for(int i = 0; i < rle_vec_val.size(); i++){
+      if(rle_vec_val[i] == x){
+        x_lens.push_back(rle_vec_len[i]);
+      }      
+    }
+    int max = *max_element(x_lens.begin(), x_lens.end());
+    return max;
+  }  
 }
 
 #endif

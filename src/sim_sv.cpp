@@ -15,14 +15,15 @@ using namespace std;
 
 // Simulate structural variations during cell division
 
-int main(int argc, char const *argv[]) {
+int main(int argc, char const *argv[]){
     // int n_cycle;
     int n_cell;
     // double dsb_rate;
     int min_dsb, max_dsb;
     int n_dsb;
-    int n_unrepaired;
+    double frac_unrepaired;
     int chr_prob;
+    string target_chrs;
     string fchr;
 
     double leap_size;
@@ -71,8 +72,9 @@ int main(int argc, char const *argv[]) {
       ("min_dsb", po::value<int>(&min_dsb)->default_value(0), "minimal number of double strand breaks")
       ("max_dsb", po::value<int>(&max_dsb)->default_value(40), "maximal number of double strand breaks")
       ("n_dsb", po::value<int>(&n_dsb)->default_value(20), "maximal number of double strand breaks")
-      ("n_unrepaired", po::value<int>(&n_unrepaired)->default_value(5), "number of unrepaired double strand breaks")
+      ("frac_unrepaired", po::value<double>(&frac_unrepaired)->default_value(0.1), "number of unrepaired double strand breaks")
       ("chr_prob", po::value<int>(&chr_prob)->default_value(0), "the probability of double strand breaks across chromosomes. 0: random; 1: biased; 2: fixed")
+      ("target_chrs", po::value<string>(&target_chrs)->default_value(""), "biased chromosomes to introduce breaks, total number followed by ID of each chromosome")
 
       ("birth_rate,b", po::value<double>(&birth_rate)->default_value(1), "birth rate")
       ("death_rate,d", po::value<double>(&death_rate)->default_value(0), "death rate")
@@ -147,13 +149,19 @@ int main(int argc, char const *argv[]) {
     read_genome_info(fchr, CHR_LENGTHS, ARM_BOUNDS, CENT_STARTS, CENT_ENDS, TELO_ENDS1, TELO_ENDS2, verbose);
 
     vector<int> selected_chr;
-    get_chr_prob(chr_prob, selected_chr);
+    if(target_chrs == ""){
+      get_chr_prob(chr_prob, selected_chr);
+    }else{
+      get_vals_from_str(selected_chr, target_chrs);
+    }
+    
     // int diff = max_dsb - min_dsb;
     // int rdm = myrng(diff);
     // n_dsb = min_dsb + diff;
     // n_dsb = gsl_ran_poisson(r, dsb_rate);
 
     Model start_model(model_ID, genotype_diff, growth_type, fitness, use_alpha);
+    int n_unrepaired = round(n_dsb * frac_unrepaired);
     Cell_ptr start_cell = new Cell(1, 0, birth_rate, death_rate, n_dsb, n_unrepaired, 0);
     genome g(1);
     start_cell->g = g;
@@ -170,17 +178,17 @@ int main(int argc, char const *argv[]) {
       final_cells = s->curr_cells;
     }
 
-    // merge segments with the same CN by haplotype
-    if(verbose > 0){
-      cout << "\nComputing CN for each cell " << endl;
-      for(auto cell : final_cells){
-        cout << "Cell " << cell->cell_ID << endl;
-        // verbose = 1;
-        // cell->print_bp_adj();
-        cell->g.calculate_segment_cn(verbose);
-      }
-      s->print_all_cells(final_cells, verbose);
+    if(verbose > 0) cout << "\nComputing CN for each cell " << endl;
+    for(auto cell : final_cells){  
+      // verbose = 1;
+      if(verbose > 0){       
+        cout << "Cell " << cell->cell_ID << endl;        
+      }      
+      // cell->print_bp_adj();
+      // merge segments with the same CN by haplotype
+      cell->g.calculate_segment_cn(verbose);  
     }
+    if(verbose > 0) s->print_all_cells(final_cells, verbose);
 
     string filetype = ".tsv";
 
@@ -215,7 +223,7 @@ int main(int argc, char const *argv[]) {
       for(int i = 0; i < NUM_CHR; i++){
         int nSV_chr = cell->chr_type_num[i][DEL] + cell->chr_type_num[i][DUP] + cell->chr_type_num[i][H2HINV] + cell->chr_type_num[i][T2TINV];
         // cout << cell->div_occur << "\t" << cell->cell_ID << "\t" << i+1 << "\t" << cell->chr_n_bp[i] << "\t" << nSV_chr << endl;
-        cout << "\t" << cell->chr_n_bp[i] << "\t" << nSV_chr;
+        cout << "\t" << cell->chr_bp_unique[i].size() << "\t" << nSV_chr << "\t" << cell->chr_n_osc2[i] << "\t" << cell->chr_n_osc3[i];
       }
       cout << endl;
     }
