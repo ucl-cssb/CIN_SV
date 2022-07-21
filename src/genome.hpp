@@ -246,8 +246,8 @@ public:
     this->junc_id1 = junc_id1;
     this->junc_id2 = junc_id2;
     this->type = type;
-    this->telomeric_type = telomeric_type;  
-    this->sv_type = sv_type;    
+    this->telomeric_type = telomeric_type;
+    this->sv_type = sv_type;
     this->is_inverted = false;
     this->is_centromeric = false;
   }
@@ -388,7 +388,7 @@ public:
   }
 
 
-  // split the path at (left_jid, right_jid)
+  // split the path at (left_jid, right_jid), not used for now
   void split_path(int j, path* p1, path* p2, int left_jid, int right_jid, const vector<int>& old_aids, bool is_inverted, const vector<breakpoint*>& junc_new, const vector<adjacency*>& adj_new, int verbose = 0){
 
     int j1 = junc_new[0 + j * 2]->id;
@@ -831,14 +831,13 @@ public:
     // }
   }
 
-  // iminate DSB by introducing breakpoints (breakpoints), following infinite sites assumption
+  // iminate DSB by introducing breakpoints (breakpoints) across the whole genome, following infinite sites assumption
   // a breakpoint will not disappear once exist
   // n_dsb: number of breakpoints for each chromosome
   // TODO: add interval DSB probability based on overlapping with FSs
   void generate_dsb(int n_dsb, int verbose = 0){
     // group breakpoints by haplotype and chr for sorting
     // get_breakpoint_map();
-
     gsl_ran_discrete_t* dis_loc = gsl_ran_discrete_preproc(NUM_CHR, CHR_PROBS);
     int jid = breakpoints.rbegin()->first + 1;
     int aid = adjacencies.rbegin()->first + 1;
@@ -1516,7 +1515,7 @@ void update_end_junc(int last_jid_orig, int last_jid) {
         if(verbose > 1){
           cout << "adjacency " << adj_copy_prev->id << " after updating junctions" << endl;
           adj_copy_prev->print();
-        }       
+        }
         // set direction of copied adjacency after junction updating based on original direction
         adj_copy_prev->is_inverted = !(adj_prev->is_inverted);
       }
@@ -1549,7 +1548,7 @@ void update_end_junc(int last_jid_orig, int last_jid) {
     if(verbose > 1){
       cout << "adjacency " << adj_copy_prev->id << " after updating junctions" << endl;
       adj_copy_prev->print();
-    }   
+    }
     adj_copy_prev->is_inverted = !(adj_prev->is_inverted);
 
     for(auto jid : nodes_copy){
@@ -1890,7 +1889,7 @@ void get_merged_interval(int verbose = 0){
 
       if(verbose > 1) cout << "CNs for haplotype B" << endl;
       map<pair<int, int>, int> cn_B;
-      pair<int, int> key1(chr, 1);     
+      pair<int, int> key1(chr, 1);
       vector<interval> cnsB = cn_by_chr_hap_merged[key1];
       for(auto intl : intls){
         for(auto cnp : cnsB){
@@ -1904,7 +1903,7 @@ void get_merged_interval(int verbose = 0){
       }
 
       if(verbose > 1) cout << "CNs for segment" << endl;
-      for(auto intl : intls){       
+      for(auto intl : intls){
         segment* s = new segment(sid++, cell_ID, chr, intl.first, intl.second, cn_A[intl], cn_B[intl]);
         this->segments.push_back(s);
         if(verbose > 1) s->print();

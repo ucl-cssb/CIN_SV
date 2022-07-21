@@ -25,6 +25,7 @@ int main(int argc, char const *argv[]){
     int chr_prob;
     string target_chrs;
     string fchr;
+    int mean_local_frag;  // mean number of breakpoints introduced by local fragmentation during mitosis
 
     double leap_size;
 
@@ -73,6 +74,7 @@ int main(int argc, char const *argv[]){
       ("max_dsb", po::value<int>(&max_dsb)->default_value(40), "maximal number of double strand breaks")
       ("n_dsb", po::value<int>(&n_dsb)->default_value(20), "maximal number of double strand breaks")
       ("frac_unrepaired", po::value<double>(&frac_unrepaired)->default_value(0.1), "number of unrepaired double strand breaks")
+      ("mean_local_frag", po::value<int>(&mean_local_frag)->default_value(0), "mean number of breakpoints introduced by local fragmentation during mitosis")
       ("chr_prob", po::value<int>(&chr_prob)->default_value(0), "the probability of double strand breaks across chromosomes. 0: random; 1: biased; 2: fixed")
       ("target_chrs", po::value<string>(&target_chrs)->default_value(""), "biased chromosomes to introduce breaks, total number followed by ID of each chromosome")
 
@@ -167,7 +169,7 @@ int main(int argc, char const *argv[]){
     start_cell->g = g;
     Clone* s = new Clone(1, 0);
     if(verbose > 0) cout << "Start cell growth " << endl;
-    s->grow_with_dsb(start_cell, start_model, n_cell, track_all, verbose);
+    s->grow_with_dsb(start_cell, start_model, n_cell, mean_local_frag, track_all, verbose);
     if(verbose > 0) cout << "Finish cell growth " << endl;
 
     vector<Cell_ptr> final_cells;
