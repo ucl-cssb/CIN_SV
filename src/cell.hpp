@@ -629,8 +629,14 @@ public:
         g.add_new_breakpoint(jid, aid, chr, bp, haplotype, left_jid, right_jid, false, verbose);
         // one breakpoint is end of a path, the other is the start of another path, depending on the orientations
         // jid has increased by 2 after add_new_breakpoint
-        // junc_starts.push_back(g.breakpoints[jid - 2]);
-        junc_starts.push_back(g.breakpoints[jid - 1]); // only add 2nd breakpoint to avoid repeated tranverse
+        if(bi.is_inverted){
+            if(verbose > 0){
+              cout << "Inverted breakpoint interval " << endl;
+            }
+            junc_starts.push_back(g.breakpoints[jid - 2]);
+        }else{
+            junc_starts.push_back(g.breakpoints[jid - 1]); // only add 2nd breakpoint to avoid repeated tranverse
+        }
 
         // update number of DSBs per chrom per haplotype
         // int idx = chr + haplotype * NUM_CHR;
@@ -640,12 +646,13 @@ public:
       }
     }
 
+
     // construct a new path starting from a specific breakpoint
     void get_path_from_bp(path* p, breakpoint* js, int verbose = 0) {
         js->path_ID = p->id;
         p->nodes.push_back(js->id);
         // there will be no cycles
-        g.get_connected_breakpoint(js, p, g.adjacencies, false);
+        g.get_connected_breakpoint(js, p, g.adjacencies, false, verbose);
         g.set_path_type(p, verbose);
         assert(p->n_centromere <= 1);
         if(verbose > 1){
@@ -670,6 +677,7 @@ public:
           // randomly pick an edge
           int eid = myrng(p->edges.size());
           adjacency* e = g.adjacencies[p->edges[eid]];
+          bool is_inverted = e->is_inverted;
           if(verbose > 1){
             cout << "selected edge " << eid << endl;
             e->print();
@@ -692,7 +700,9 @@ public:
                   g.breakpoints[e->junc_id2]->print();
                   e->print();
                 }
+
                 bcount++;
+
                 int chr = g.breakpoints[e->junc_id1]->chr;
                 int haplotype = g.breakpoints[e->junc_id1]->haplotype;
                 assert(g.breakpoints[e->junc_id1]->chr == g.breakpoints[e->junc_id2]->chr);
@@ -700,6 +710,7 @@ public:
                 int bp = 0;
                 int left_jid = -1;
                 int right_jid = -1;
+
                 do{
                   ntrial++;
                   bp = (int)runiform(r, ps, pe);
@@ -715,18 +726,27 @@ public:
                 // remove old edges, add new edges
                 g.add_new_breakpoint(jid, aid, chr, bp, haplotype, left_jid, right_jid, false, verbose);
 
-                breakpoint* bp1 = g.breakpoints[jid - 2];
-                breakpoint* bp2 = g.breakpoints[jid - 1];
-                assert(bp1->id == jid - 2);
-                assert(bp2->id == jid - 1);
-                new_bps.push_back(bp1);
-                new_bps.push_back(bp2);
+                // always add the right (based on the direction of the edge) most breakpoint to avoid duplicated path
+                if(is_inverted){
+                  breakpoint* bp1 = g.breakpoints[jid - 2];
+                  assert(bp1->id == jid - 2);
+                  new_bps.push_back(bp1);
+                  if(verbose > 0){
+                    cout << "Inverted breakpoint interval " << endl;
+                    cout << "storing new breakpoints with current jid " << jid << endl;
+                    bp1->print();
+                  }
+                }else{
+                  breakpoint* bp2 = g.breakpoints[jid - 1];
+                  assert(bp2->id == jid - 1);
+                  new_bps.push_back(bp2);
+                  if(verbose > 0){
+                    cout << "storing new breakpoints with current jid " << jid << endl;
+                    bp2->print();
+                  }
+                }
 
-                if(verbose > 0){
-                  cout << "storing new breakpoints with current jid " << jid << endl;
-                  bp1->print();
-                  bp2->print();
-
+                if(verbose > 1){
                   cout << "Updating path with new edges " << endl;
                 }
 
@@ -774,12 +794,16 @@ public:
               distribute_path(p, dcell1, dcell2, max_pID, verbose);
               return;
             }
+            new_bps.push_back(g.breakpoints[p->nodes[0]]);
+            int i = 0;
             for(auto njs: new_bps){
-              if(verbose > 0){
-                njs->print();
-              }
               path* p2 = new path(++pid, this->cell_ID, COMPLETE);
               get_path_from_bp(p2, njs, verbose);
+              if(verbose > 0){
+                cout << "\nGenerating a new path " << ++i << " from breakpoint " << njs->id << endl;
+                njs->print();
+                p2->print();
+              }
               int max_pID = -1;
               distribute_path(p2, dcell1, dcell2, max_pID, verbose);
             }
@@ -824,6 +848,7 @@ public:
       vector<breakpoint*> junc_starts;  // start breakpoints for new paths
       if(verbose > 0) cout << "breaking a circular path" << endl;
       find_path_breakpoints(bps_in_interval, junc_starts, verbose);
+      // The path starting from both path breaks will be distributed twice when adding both sides of a break
       // assert(junc_starts.size() == nbreak * 2);
       assert(junc_starts.size() == nbreak);  // one junc_start lead to a path
 
@@ -843,7 +868,6 @@ public:
       }
 
       // int nnode = 0;
-      // The path starting from both path breaks will be distributed twice
       if(verbose > 0) cout << "Segregating into " << junc_starts.size() << " subpaths for path " << p2split->id + 1 << endl;
 
       // recompute path from each breakpoint to avoid complexity of tracking each broken adjacency
@@ -1041,7 +1065,7 @@ public:
           }else{
               if(verbose > 1){
                 cout << "distributing the copy randomly" << endl;
-              }            
+              }
               distribute_path(p, dcell1, dcell2, max_pID, verbose);
           }
 
@@ -1272,7 +1296,13 @@ public:
         }
 
         if(chr1 != chr2){
-          assert(type == TRA);
+          if(type != TRA){
+              cout << "Weird type of adjacency!" << endl;
+              adj->print();
+              g.breakpoints[adj->junc_id1]->print();
+              g.breakpoints[adj->junc_id2]->print();
+              exit(1);
+          }
           chr_type_num[chr1][type] += 1;
           chr_type_num[chr2][type] += 1;
         }else{

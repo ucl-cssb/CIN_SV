@@ -140,7 +140,7 @@ int main(int argc, char const *argv[]){
 
     unsigned long rseed = setup_rng(seed);
 
-    if(verbose > 0) cout << "Random seed: " << rseed << endl;
+    if(verbose >= 0) cout << "Random seed: " << rseed << endl;
 
     // cout << "Using Boost "
     //   << BOOST_VERSION / 100000     << "."  // major version
@@ -156,7 +156,7 @@ int main(int argc, char const *argv[]){
     }else{
       get_vals_from_str(selected_chr, target_chrs);
     }
-    
+
     // int diff = max_dsb - min_dsb;
     // int rdm = myrng(diff);
     // n_dsb = min_dsb + diff;
@@ -180,15 +180,26 @@ int main(int argc, char const *argv[]){
       final_cells = s->curr_cells;
     }
 
-    if(verbose > 0) cout << "\nComputing CN for each cell " << endl;
-    for(auto cell : final_cells){  
+    if(verbose > 0) cout << "\nComputing breakpoints on each chromosome across all cells " << endl;
+    // get breakpoints across cells first
+    map<int, set<int>> bps_by_chr;
+    for(auto cell : final_cells){
       // verbose = 1;
-      if(verbose > 0){       
-        cout << "Cell " << cell->cell_ID << endl;        
-      }      
+      if(verbose > 0){
+        cout << "Cell " << cell->cell_ID << endl;
+      }
+      cell->g.get_bps_per_chr(bps_by_chr, verbose);
+    }
+
+    if(verbose > 0) cout << "\nComputing CN for each cell " << endl;
+    for(auto cell : final_cells){
+      // verbose = 1;
+      if(verbose > 0){
+        cout << "Cell " << cell->cell_ID << endl;
+      }
       // cell->print_bp_adj();
       // merge segments with the same CN by haplotype
-      cell->g.calculate_segment_cn(verbose);  
+      cell->g.calculate_segment_cn(bps_by_chr, verbose);
     }
     if(verbose > 0) s->print_all_cells(final_cells, verbose);
 
