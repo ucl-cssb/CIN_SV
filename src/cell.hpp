@@ -426,13 +426,13 @@ public:
         if(u < 0.5){
           if(verbose > 0){
             cout << "Distributing split path " << p->id + 1 << desc << " to daughter cell " << dcell1->cell_ID << endl;
-            write_path(p, cout);
+            g.write_path(p, cout);
           }
           inherit_path_one(p, dcell1, max_pID, 1, verbose);
         }else{
           if(verbose > 0){
             cout << "Distributing split path " << p->id + 1 << desc << " to daughter cell " << dcell2->cell_ID << endl;
-            write_path(p, cout);
+            g.write_path(p, cout);
           }
           inherit_path_one(p, dcell2, max_pID, 1, verbose);
         }
@@ -648,13 +648,26 @@ public:
 
 
     // construct a new path starting from a specific breakpoint
-    void get_path_from_bp(path* p, breakpoint* js, int verbose = 0) {
+    void get_path_from_bp(path* p, breakpoint* js, double circular_prob, int verbose = 0) {
         js->path_ID = p->id;
         p->nodes.push_back(js->id);
+        if(verbose > 0){
+          cout << "\nstart connecting path from " << js->id << endl;
+        }
         // there will be no cycles
         g.get_connected_breakpoint(js, p, g.adjacencies, false, verbose);
-        g.set_path_type(p, verbose);
+
+        if(verbose > 1) {
+          cout << "setting path type" << endl;
+        }
+        double u2 = runiform(r, 0, 1);
+        if(u2 < circular_prob){
+            g.set_path_type(p, true, verbose);
+        }else{
+            g.set_path_type(p, false, verbose);
+        }        
         assert(p->n_centromere <= 1);
+
         if(verbose > 1){
           cout << "new path " << p->id + 1 << " at breakpoint " << js->id << endl;
           js->print();
@@ -665,12 +678,13 @@ public:
     bool path_local_fragmentation(path* p, int mean_local_frag, vector<breakpoint*>& new_bps, int verbose = 0){
         int nbreak = gsl_ran_poisson(r, mean_local_frag);
         if(verbose > 1){
-          cout << "Fragmentize path " << p->id + 1 << " with " << nbreak << " breaks" << endl;
+          cout << "Fragmentize path " << p->id + 1 << endl;
           p->print();
         }
         // generate DSBs on the selected path, form nbreak+1 new paths
         int bcount = 0;
         int ntrial = 0;
+        int nfail = 0;
         int jid = g.breakpoints.rbegin()->first + 1;
         int aid = g.adjacencies.rbegin()->first + 1;
         while(bcount != nbreak){
@@ -720,7 +734,8 @@ public:
 
                 // it may be impossible to split the region without breaking telomore or centromere
                 if(ntrial > nbreak){
-                  return false;
+                  nfail++;
+                  continue;
                 }
 
                 // remove old edges, add new edges
@@ -758,19 +773,25 @@ public:
             }
           }
         }
-        return true;
+
+        if(nfail == nbreak){  // all trials to add breakpoints failed
+          return false;
+        }else{
+          return true;    
+        }      
       }
 
 
-    void split_path_from_bp(int& pid, breakpoint* js, int mean_local_frag, Cell_ptr dcell1, Cell_ptr dcell2, vector<path*>& new_paths, int verbose = 0){
+    void split_path_from_bp(int& pid, breakpoint* js, int mean_local_frag, double circular_prob, Cell_ptr dcell1, Cell_ptr dcell2, vector<path*>& new_paths, int verbose = 0){
         //  each path will have a unique ID
         path* p = new path(++pid, this->cell_ID, COMPLETE);
-        get_path_from_bp(p, js, verbose);
+        get_path_from_bp(p, js, circular_prob, verbose);
 
         if(mean_local_frag == 0){
           if(verbose > 0){
             cout << "The new path has one centromere after simple break" << endl;
           }
+          g.validate_path(p);
           new_paths.push_back(p);
           // p->print();
           // p to either daughter cell
@@ -789,25 +810,35 @@ public:
             vector<breakpoint*> new_bps;
             bool splited = path_local_fragmentation(p, mean_local_frag, new_bps, verbose);
             if(!splited){
+              g.validate_path(p);
               new_paths.push_back(p);
               int max_pID = -1;
               distribute_path(p, dcell1, dcell2, max_pID, verbose);
               return;
             }
             new_bps.push_back(g.breakpoints[p->nodes[0]]);
+
             int i = 0;
             for(auto njs: new_bps){
-              path* p2 = new path(++pid, this->cell_ID, COMPLETE);
-              get_path_from_bp(p2, njs, verbose);
               if(verbose > 0){
-                cout << "\nGenerating a new path " << ++i << " from breakpoint " << njs->id << endl;
-                njs->print();
+                cout << "\nGenerating " << ++i << "th new path from breakpoint " << njs->id << endl;
+                 njs->print();
+              }  
+
+              path* p2 = new path(++pid, this->cell_ID, COMPLETE);
+              
+              get_path_from_bp(p2, njs, circular_prob, verbose);
+
+              if(verbose > 0){
+                cout << "Path " << p2->id << " from breakpoint " << njs->id << endl;               
                 p2->print();
               }
+
               int max_pID = -1;
               distribute_path(p2, dcell1, dcell2, max_pID, verbose);
             }
           }else{
+              g.validate_path(p);
               new_paths.push_back(p);
               int max_pID = -1;
               distribute_path(p, dcell1, dcell2, max_pID, verbose);
@@ -820,9 +851,9 @@ public:
     // choose breakpoint location so that each path contains one centromere, introduce new breakpoints and form connections
     // assume the path has 2 telomeres at the ends
     // p2split will be split into n_centromere paths, which are distributed randomly
-    void segregate_polycentric(path* p2split, Cell_ptr dcell1, Cell_ptr dcell2, int& pid, vector<path*>& new_paths, int mean_local_frag, int verbose = 0){
+    void segregate_polycentric(path* p2split, Cell_ptr dcell1, Cell_ptr dcell2, int& pid, vector<path*>& new_paths, int mean_local_frag, double circular_prob, int verbose = 0){
       // verbose = 2;
-      if(verbose > 0) write_path(p2split, cout);
+      if(verbose > 0) g.write_path(p2split, cout);
       if(verbose > 1){
         p2split->print();
       }
@@ -875,7 +906,7 @@ public:
       // path in the middle will be visited twice
       for(auto js : junc_starts){
         if(verbose > 0) cout << "spliting path starting from breakpoint " << js->id << endl;
-        split_path_from_bp(pid, js, mean_local_frag, dcell1, dcell2, new_paths, verbose);
+        split_path_from_bp(pid, js, mean_local_frag, circular_prob, dcell1, dcell2, new_paths, verbose);
       }
 
       // assert(nnode = p2split->nodes.size() + 2 * nbreak);     // only hold without local fragmentation
@@ -883,7 +914,7 @@ public:
 
 
     // introduce DSB and repair breaks (adding variant adjacencies)
-    void g1(int n_dsb, int n_unrepaired, int verbose = 0){
+    void g1(int n_dsb, int n_unrepaired, double circular_prob, int verbose = 0){
       // verbose = 1;
        if(verbose > 0) cout << "\nIntroducing " << n_dsb << " DSBs" << endl;
       g.generate_dsb(n_dsb, verbose);
@@ -904,14 +935,14 @@ public:
       }
 
       if(verbose > 0) cout << "\nGetting the derivative genome" << endl;
-      g.get_derivative_genome(verbose);
+      g.get_derivative_genome(circular_prob, verbose);
 
       if(verbose > 0){
         // all regions should be included with CN 2, may have different orders
         cout << "\nAll paths in the derivative genome" << endl;
         for(auto p: g.paths){
           p->print();
-          write_path(p, cout);
+          g.write_path(p, cout);
         }
         // TODO: add CN sanity
         cout << "\nEnd of G1 phase" << endl;
@@ -925,11 +956,6 @@ public:
       int max_pID = find_max_pathID();
       vector<path*> new_paths;
       for(auto p : g.paths){
-        if(!p->is_circle){
-          assert(p->nodes.size() % 2 == 0);
-        }
-        assert(p->nodes.size() == p->edges.size() + 1);
-
         // replicates incomplete paths by adding new breakpoints (S) and path fusion
         if(p->type != COMPLETE && !p->is_circle){
           // if(p->type == NONTEL && p->n_centromere > 0){
@@ -938,7 +964,7 @@ public:
           // }
           if(verbose > 0){
             cout << "Duplicating incomplete path " << p->id + 1 << endl;
-            write_path(p, cout);
+            g.write_path(p, cout);
           }
 
           // TODO: distinguish fusion at which cell cycle to see its linkage with chromothripsis?
@@ -979,14 +1005,15 @@ public:
             p2->sibling = p;
             p->sibling = p2;
 
+            g.validate_path(p2);
             new_paths.push_back(p2);
 
             if(verbose > 1){
               cout << "copy path " << p->id + 1 << " to path " << p2->id + 1 << endl;
               p->print();
-              write_path(p, cout);
+              g.write_path(p, cout);
               p2->print();
-              write_path(p2, cout);
+              g.write_path(p2, cout);
             }
         }
       }
@@ -1026,7 +1053,7 @@ public:
 
 
     // randomly distribute segments between daughter cells, depend on #centromeres
-    void mitosis(Cell_ptr dcell1, Cell_ptr dcell2, int&  n_complex_path, int& n_path_break, int mean_local_frag, int verbose = 0){
+    void mitosis(Cell_ptr dcell1, Cell_ptr dcell2, int&  n_complex_path, int& n_path_break, int mean_local_frag, double circular_prob, int verbose = 0){
       // verbose = 2;
       if(verbose > 1){
         cout << g.paths.size() << " paths before split (may include duplicated path distributed to daughter cells)" << endl;
@@ -1079,7 +1106,7 @@ public:
           n_path_break += p->n_centromere - 1;
           // for(int i = 0; i < 2; i++){ // do it twice to iminate duplication ?
           // }
-          segregate_polycentric(p, dcell1, dcell2, max_pID, new_paths, mean_local_frag, verbose);
+          segregate_polycentric(p, dcell1, dcell2, max_pID, new_paths, mean_local_frag, circular_prob, verbose);
           if(verbose > 1) cout << "\nFinish complex splitting" << endl;
         }
       }
@@ -1091,7 +1118,7 @@ public:
           //  random_split(p, dcell1, dcell2, max_pID, verbose);
           //  assume all such paths have been duplicated correctly
            distribute_path(p, dcell1, dcell2, max_pID, verbose);
-           if(verbose > 0) write_path(p, cout);
+           if(verbose > 0) g.write_path(p, cout);
          }
       }
 
@@ -1159,43 +1186,14 @@ public:
     }
 
 
-    void write_path(path* p, ostream& fout){
-        // cout << "writing path" << endl;
-        string shape = "linear";
-        if(p->is_circle){
-          shape = "circular";
-        }
-
-        fout << p->id + 1 << "\t" << shape << "\t" << get_telomere_type_string(p->type) << "\t" << p->n_centromere << "\t";
-
-        for(auto e : p->edges){
-          // cout << "\nedge " << e << endl;
-          adjacency *adj = g.adjacencies[e];
-          // adj->print();
-          breakpoint *j1 = g.breakpoints[adj->junc_id1];
-          breakpoint *j2 = g.breakpoints[adj->junc_id2];
-          if(adj->is_inverted){
-            j1 = g.breakpoints[adj->junc_id2];
-            j2 = g.breakpoints[adj->junc_id1];
-          }
-
-          fout << (j1->chr % NUM_CHR) + 1 << ":" << get_haplotype_string(j1->haplotype) << ":" << j1->pos << "-" << (j2->chr % NUM_CHR) + 1 << ":" << get_haplotype_string(j2->haplotype) << ":" << j2->pos << ",";
-        }
-        fout << endl;
-    }
-
-
     // output in a way to facilitate understanding of CN and SV data
     void write_genome(string fname){
-        // print_bp_adj();
-        // g.get_derivative_genome();  // to check consistencies of paths, breakpoints, adjacencies
-
         ofstream fout(fname);
         // fout << g.paths.size() << endl;
         // weird path ID, starting from 1
         fout << "ID\tshape\ttype\tNcentromere\tnodes\n";
         for(auto p: g.paths){
-          write_path(p, fout);
+          g.write_path(p, fout);
         }
     }
 
@@ -1436,7 +1434,8 @@ public:
 
     // a whole cycle of cell division
     // duplication and repair of its genome
-    void do_cell_cycle(Cell_ptr dcell1, Cell_ptr dcell2, int& n_telo_fusion, int& n_complex_path, int& n_path_break, int mean_local_frag, int verbose = 0){
+    // Path IDs are reencoded in the next cell cylce
+    void do_cell_cycle(Cell_ptr dcell1, Cell_ptr dcell2, int& n_telo_fusion, int& n_complex_path, int& n_path_break, int mean_local_frag, double circular_prob, int verbose = 0){
       // verbose = 2;
       // introduces DSBs into the genome prior to G1 repairs
       if(verbose > 1){
@@ -1445,13 +1444,13 @@ public:
       }
 
       if(verbose > 0) cout << "\nG1 phase" << endl;
-      g1(n_dsb, n_unrepaired, verbose);
+      g1(n_dsb, n_unrepaired, circular_prob, verbose);
 
       if(verbose > 0) cout << "\nSphase and G2" << endl;
       sphase_g2(n_telo_fusion, verbose);
 
       if(verbose > 0) cout << "\nMitosis phase" << endl;
-      mitosis(dcell1, dcell2, n_complex_path, n_path_break, mean_local_frag, verbose);
+      mitosis(dcell1, dcell2, n_complex_path, n_path_break, mean_local_frag, circular_prob, verbose);
 
       if(verbose > 2){
         cout << "\nnumber of DSBs: " << n_dsb << endl;

@@ -22,6 +22,7 @@ int main(int argc, char const *argv[]){
     int min_dsb, max_dsb;
     int n_dsb;
     double frac_unrepaired;
+    double circular_prob;
     int chr_prob;
     string target_chrs;
     string fchr;
@@ -76,6 +77,7 @@ int main(int argc, char const *argv[]){
       ("frac_unrepaired", po::value<double>(&frac_unrepaired)->default_value(0.1), "number of unrepaired double strand breaks")
       ("mean_local_frag", po::value<int>(&mean_local_frag)->default_value(0), "mean number of breakpoints introduced by local fragmentation during mitosis")
       ("chr_prob", po::value<int>(&chr_prob)->default_value(0), "the probability of double strand breaks across chromosomes. 0: random; 1: biased; 2: fixed")
+      ("circular_prob", po::value<double>(&circular_prob)->default_value(0.5), "the probability of a frament without centromere and telomeres forming ecDNA")
       ("target_chrs", po::value<string>(&target_chrs)->default_value(""), "biased chromosomes to introduce breaks, total number followed by ID of each chromosome")
 
       ("birth_rate,b", po::value<double>(&birth_rate)->default_value(1), "birth rate")
@@ -140,7 +142,7 @@ int main(int argc, char const *argv[]){
 
     unsigned long rseed = setup_rng(seed);
 
-    if(verbose >= 0) cout << "Random seed: " << rseed << endl;
+    if(verbose > 0) cout << "Random seed: " << rseed << endl;
 
     // cout << "Using Boost "
     //   << BOOST_VERSION / 100000     << "."  // major version
@@ -168,8 +170,9 @@ int main(int argc, char const *argv[]){
     genome g(1);
     start_cell->g = g;
     Clone* s = new Clone(1, 0);
+    
     if(verbose > 0) cout << "Start cell growth " << endl;
-    s->grow_with_dsb(start_cell, start_model, n_cell, mean_local_frag, track_all, verbose);
+    s->grow_with_dsb(start_cell, start_model, n_cell, mean_local_frag, circular_prob, track_all, verbose);
     if(verbose > 0) cout << "Finish cell growth " << endl;
 
     vector<Cell_ptr> final_cells;
@@ -206,7 +209,7 @@ int main(int argc, char const *argv[]){
     string filetype = ".tsv";
 
     if(write_circos){
-      cout << "\nWrite output for circos plot" << endl;
+      if(verbose > 0) cout << "\nWrite output for circos plot" << endl;
       for(auto cell : final_cells){
         string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
         string fname_sv = outdir +"/" + "sv_data_c" + midfix + filetype;
@@ -218,7 +221,7 @@ int main(int argc, char const *argv[]){
 
     // write CN and SV data to tsv - for ShatterSeek
     if(write_shatterseek){
-      cout << "\nWrite output for ShatterSeek" << endl;
+      if(verbose > 0) cout << "\nWrite output for ShatterSeek" << endl;
       for(auto cell : final_cells){
         string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
         string fname_sv_ss = outdir +"/" + "SVData_c" + midfix + filetype;
@@ -249,7 +252,7 @@ int main(int argc, char const *argv[]){
       fout << final_cells.size() << "\t" << n_dsb << "\t" << n_unrepaired << "\t" + to_string(s->n_complex_path) + "\t" + to_string(s->n_path_break) + "\t" + to_string(s->n_telo_fusion) << endl;
       fout.close();
 
-      cout << "\nWrite output for summary statistics" << endl;
+      if(verbose > 0) cout << "\nWrite output for summary statistics" << endl;
       for(auto cell : final_cells){
         string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
         string fname_stat = outdir +"/" + "sumStats_total_c" + midfix + filetype;
@@ -259,7 +262,7 @@ int main(int argc, char const *argv[]){
     }
 
     if(write_genome){
-      cout << "Write output for the derivative genome" << endl;
+      if(verbose > 0) cout << "Write output for the derivative genome" << endl;
       for(auto cell : final_cells){
         string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
         string fname = outdir +"/" + "genome_c" + midfix + filetype;

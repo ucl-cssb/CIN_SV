@@ -274,6 +274,7 @@ public:
     if(is_inverted){
       invt = "inverted";
     }
+    // path 0 means the adjacency is not in any path
     cout << "Adjacency " << id << " in cell " << cell_ID << " at path " << path_ID + 1 << " with left breakpoint " << junc_id1 << " and right breakpoint " << junc_id2 << ", " << cent << ", " << invt << ", " << get_adj_type_string(type) << ", " << get_telomere_type_string(telomeric_type) << ", " << get_sv_type_string(sv_type) << endl;
   }
 
@@ -499,6 +500,7 @@ public:
     int ncent = 0;
     return ncent;
   }
+
 };
 
 
@@ -586,6 +588,7 @@ public:
       p->nodes.push_back(j1->id);
       p->nodes.push_back(j2->id);
       p->edges.push_back(adj->id);
+      validate_path(p);
       paths.push_back(p);
 
       haplotype = 1;
@@ -605,6 +608,7 @@ public:
       p2->nodes.push_back(j3->id);
       p2->nodes.push_back(j4->id);
       p2->edges.push_back(adj2->id);
+      validate_path(p2);
       paths.push_back(p2);
 
       chr_ends.insert(chr_ends.end(), {j1->id, j2->id, j3->id, j4->id});
@@ -645,6 +649,31 @@ public:
     }
   }
 
+
+  void write_path(path* p, ostream& fout){
+    // cout << "writing path" << endl;
+    string shape = "linear";
+    if(p->is_circle){
+      shape = "circular";
+    }
+
+    fout << p->id + 1 << "\t" << shape << "\t" << get_telomere_type_string(p->type) << "\t" << p->n_centromere << "\t";
+
+    for(auto e : p->edges){
+      // cout << "\nedge " << e << endl;
+      adjacency *adj = adjacencies[e];
+      // adj->print();
+      breakpoint *j1 = breakpoints[adj->junc_id1];
+      breakpoint *j2 = breakpoints[adj->junc_id2];
+      if(adj->is_inverted){
+        j1 = breakpoints[adj->junc_id2];
+        j2 = breakpoints[adj->junc_id1];
+      }
+
+      fout << (j1->chr % NUM_CHR) + 1 << ":" << get_haplotype_string(j1->haplotype) << ":" << j1->pos << "-" << (j2->chr % NUM_CHR) + 1 << ":" << get_haplotype_string(j2->haplotype) << ":" << j2->pos << ",";
+    }
+    fout << endl;
+  }
 
   // // find breakpoints by haplotype and chr
   // void get_breakpoint_map(){
@@ -1086,15 +1115,15 @@ public:
 
 
   void set_path_type(path* p, bool set_circle = true, int verbose = 0){
-    if(verbose > 1) cout << "set type for path " << p->id + 1 << endl;
+    if(verbose > 1){
+      cout << "set type for path " << p->id + 1 << endl;
+      p->print();
+      write_path(p, cout);
+    }
 
     int size = p->nodes.size();
     int start = p->nodes[0];
-    int end = p->nodes[size-1];
-
-    if(start == end){
-      p->is_circle = true;
-    }
+    int end = p->nodes[size - 1];
 
      // end nodes should be telomere
     if(breakpoints[start]->is_end && breakpoints[end]->is_end){
@@ -1106,19 +1135,37 @@ public:
     }else{     // nonTel
       p->type = NONTEL;
       // set to circular if there is no centromere
-      if(p->n_centromere == 0 && set_circle){
+      if(p->n_centromere == 0 && set_circle && start != end){
+        if((breakpoints[start]->left_jid == -1 || breakpoints[start]->right_jid == -1)){
+          if(breakpoints[start]->left_jid == -1){
+            breakpoints[start]->left_jid = end;
+          }else{
+            breakpoints[start]->right_jid = end;
+          }
+        }
+
+        if((breakpoints[end]->left_jid == -1 || breakpoints[end]->right_jid == -1)){
+          if(breakpoints[end]->left_jid == -1){
+            breakpoints[end]->left_jid = start;
+          }else{
+            breakpoints[end]->right_jid = start;
+          }
+        }
+
         // add another adjacency from end to start
         int aid = adjacencies.rbegin()->first + 1;
         SV_type sv_type = set_var_type(breakpoints[end], breakpoints[start]);
         adjacency* adj = new adjacency(cell_ID, aid, p->id, end, start, VAR, NONTEL, sv_type);
         adj->is_inverted = true;
+
         p->edges.push_back(aid);
-        p->nodes.push_back(start);
         adjacencies[aid] = adj;
+
+        p->nodes.push_back(start);
+              
         breakpoints[end]->is_repaired = true;
         breakpoints[start]->is_repaired = true;
-        breakpoints[start]->left_jid = end;
-        breakpoints[end]->right_jid = start;
+        
         p->is_circle = true;       
       }
     }
@@ -1197,6 +1244,7 @@ public:
   // a connected path of breakpoints starting from js
   // is_forward: true -- left to right (5' to 3', p-tel to q-tel), 1 -- right to left
   // check left breakpoint if the right breakpoint is the same as jp
+  // check_interval: check whether the 1st adjacency is an interval
   // circular path ?
   void get_connected_breakpoint(breakpoint* js, path* p, map<int, adjacency*>& adjacencies, bool check_interval = false, int verbose = 0){
     // verbose = 1;
@@ -1205,7 +1253,7 @@ public:
 
     bool not_interval = false;
     if(check_interval){
-      if(verbose > 1){
+      if(verbose > 2){
         cout << "checking whether path from " << js->id << " to " << nei << " is an interval\n";
         for(auto adj : adjacencies){
           adj.second->print();
@@ -1249,10 +1297,35 @@ public:
   }
 
 
+  void validate_path(path* p){
+    if(p->nodes.size() != p->edges.size() + 1){
+      cout << "Incorrect number of edges in path " << p->id + 1 << endl;
+      p->print();
+      write_path(p, cout);
+      exit(1);        
+    }  
+
+    if(!p->is_circle){
+      if(p->nodes.size() % 2 != 0){
+        cout << "Incorrect number of nodes in linear path " << p->id + 1 << endl;
+        p->print();
+        write_path(p, cout);
+        exit(1);
+      }
+    }else{
+      if(p->nodes.size() % 2 == 0){
+        cout << "Incorrect number of nodes in circular path " << p->id + 1 << endl;
+        p->print();
+        write_path(p, cout);
+        exit(1);
+      }
+    }  
+  }
+
   // # defines paths that start and end on a telomere prior to S phase
   // # i.e. these paths are fully connected upon completion of G1
   // TODO: consider duplicated path
-  void get_derivative_genome(int verbose = 0){
+  void get_derivative_genome(double circular_prob, int verbose = 0){
     // verbose = 1;
     // remove previous path connections
     paths.clear();
@@ -1306,7 +1379,7 @@ public:
       }else{
         p->type = PTEL; // pTel
       }
-
+      validate_path(p);
       paths.push_back(p);
     }
 
@@ -1354,7 +1427,7 @@ public:
       }else{
         p->type = QTEL;
       }
-
+      validate_path(p);
       paths.push_back(p);
     }
 
@@ -1385,6 +1458,7 @@ public:
       }
     }
 
+    // an interval may be self-connected after repairing, forming a circle
     for(auto js : junc_unconnected){  // need additional check to ensure 1st region is interval
       if(js->path_ID >= 0) continue;   // some nodes may be already in a path
 
@@ -1402,8 +1476,8 @@ public:
         p->is_circle = true;
       }
       assert(!breakpoints[p->nodes[size-1]]->is_end);
-      p->type = NONTEL; // nonTel
 
+      validate_path(p);
       paths.push_back(p);
     }
 
@@ -1444,8 +1518,8 @@ public:
         p->is_circle = true;
       }
       assert(!breakpoints[p->nodes[size-1]]->is_end);
-      p->type = NONTEL; // nonTel
 
+      validate_path(p);
       paths.push_back(p);
     }
 
@@ -1555,18 +1629,27 @@ breakpoint* duplicate_path(path& p, vector<int>& edges_copy, vector<int>& nodes_
   }
 
   assert(curr_eid >= 0);
-  // duplicate last node (breakpoint), since #node = #edge + 1
+  // duplicate last node (breakpoint) when the path is not circular, since #node = #edge + 1
   breakpoint* bp = breakpoints[p.nodes[p.nodes.size()-1]];
-  breakpoint* junc_copy = new breakpoint(*bp);
-  junc_copy->id = breakpoints.rbegin()->first + 1;
-  breakpoints[junc_copy->id] = junc_copy;
+  breakpoint* junc_copy = NULL;
+  if(!p.is_circle){   
+    junc_copy = new breakpoint(*bp);
+    junc_copy->id = breakpoints.rbegin()->first + 1;
+    breakpoints[junc_copy->id] = junc_copy;
+    junc_id_map[bp->id] = junc_copy->id;
+  }else{
+    assert(p.nodes[0] == p.nodes[p.nodes.size()-1]);
+    junc_copy = breakpoints[nodes_copy[0]];
+  }
+
   nodes_copy.push_back(junc_copy->id);
-  junc_id_map[bp->id] = junc_copy->id;
+
   if(verbose > 1){
     cout << "copy breakpoint " << bp->id << endl;
     bp->print();
     junc_copy->print();
   }
+
   // the neighbor updated depends on direction
   update_adj_junc(adj_copy_prev, junc_copy_prev, junc_copy, verbose);
   if(verbose > 1){
@@ -1577,7 +1660,15 @@ breakpoint* duplicate_path(path& p, vector<int>& edges_copy, vector<int>& nodes_
     adj_copy_prev->is_inverted = !(adj_prev->is_inverted);
   }
 
-  for(auto jid : nodes_copy){
+  int nbp = nodes_copy.size();
+  if(p.is_circle){
+    nbp--;
+  }
+  for(int i = 0; i < nbp; i++){
+    int jid = nodes_copy[i];
+    if(verbose > 1){
+      cout << "update neighbor of node " << jid << endl; 
+    }
     if(breakpoints[jid]->left_jid >= 0){
       breakpoints[jid]->left_jid = junc_id_map[breakpoints[jid]->left_jid];
     }
