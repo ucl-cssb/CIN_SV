@@ -6,9 +6,7 @@
 #include <boost/program_options.hpp>
 #include <boost/filesystem.hpp>
 
-// #include "cell.hpp"
 #include "clone.hpp"
-
 
 using namespace std;
 
@@ -173,7 +171,7 @@ int main(int argc, char const *argv[]){
     
     if(verbose > 0) cout << "Start cell growth " << endl;
     s->grow_with_dsb(start_cell, start_model, n_cell, mean_local_frag, circular_prob, track_all, verbose);
-    if(verbose > 0) cout << "Finish cell growth " << endl;
+    if(verbose > 0) cout << "\nFinish cell growth " << endl;
 
     vector<Cell_ptr> final_cells;
     if(track_all){

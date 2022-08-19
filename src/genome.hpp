@@ -363,7 +363,7 @@ public:
   int type;  // 0: nonTel; 1: pTel; 2: qTel; 3: ptel to tel (complete)
   int n_centromere;   // counts how many centromeres there are in a defined path
   bool is_circle;
-  path* sibling;   // Its copy in S phase, used in keep tracking of balanced distribution
+  int sibling;   // Its copy in S phase, used in keep tracking of balanced distribution
   int child_cell_ID;  // The cell ID of its copy in next generation, may be more than one for circular paths, used in keep tracking of balanced distribution
 
   path(int id, int cell_ID, int type){
@@ -372,7 +372,7 @@ public:
     this->type = type;
     this->n_centromere = 0;
     this->is_circle = false;
-    this->sibling = NULL;
+    this->sibling = -1;
     this->child_cell_ID = -1;
   }
 
@@ -382,8 +382,8 @@ public:
       shape = "circular";
     }
     string sibling_str = "";
-    if(sibling != NULL){
-        sibling_str = ", sibling path ID " + to_string(sibling->id + 1);
+    if(sibling != -1){
+        sibling_str = ", sibling path ID " + to_string(sibling + 1);
     }
     cout << "Path " << id + 1 << " in cell " << cell_ID << ", " << shape << sibling_str << ", with " << n_centromere << " centromere and " << get_telomere_type_string(type) << "; " << nodes.size() << " nodes: ";
     for(auto n : nodes){
@@ -511,10 +511,10 @@ public:
   int cell_ID;
 
   // breakpoint (breakpoint) and adjacency define the genome graph
-  // use map to access each element by its unique ID
+  // use map to access each element by its unique ID and avoid duplications
   map<int, breakpoint*> breakpoints;
   map<int, adjacency*> adjacencies;
-  vector<path*> paths;  // path ID can be duplicated
+  map<int, path*> paths;  
 
   // map<pair<int, int>, vector<breakpoint*>> junc_map;  // group breakpoints by haplotype and chr to facilitate neighbor searching
   map<pair<int, int>, vector<interval>>  cn_by_chr_hap;
@@ -528,14 +528,13 @@ public:
   // vector<int> vec_n_mitosis_break;  // seem not biologically meaningful
   // map<int, vector<int>> chr_type_num;  // chr, num for each SV type indexed by TYPE
 
-  vector<segment> cn_profile;
   vector<int> chr_ends;
 
   ~genome(){
     // cout << "start releasing pointers" << endl;
 
     for(auto p : paths){
-      delete p;
+         delete p.second;  
     }
     for(auto am : adjacencies){
       delete am.second;
@@ -589,7 +588,7 @@ public:
       p->nodes.push_back(j2->id);
       p->edges.push_back(adj->id);
       validate_path(p);
-      paths.push_back(p);
+      paths[p->id] = p;
 
       haplotype = 1;
       breakpoint* j3 = new breakpoint(cell_ID, jid++, chr, 0, TAIL, haplotype, is_end, is_repaired);
@@ -609,7 +608,7 @@ public:
       p2->nodes.push_back(j4->id);
       p2->edges.push_back(adj2->id);
       validate_path(p2);
-      paths.push_back(p2);
+      paths[p2->id] = p2;
 
       chr_ends.insert(chr_ends.end(), {j1->id, j2->id, j3->id, j4->id});
     }
@@ -645,8 +644,50 @@ public:
 
     cout << paths.size() << " paths in the genome: " << endl;
     for(auto p : paths){
-      p->print();
+      p.second->print();
     }
+  }
+
+  // Find the maximum values of breakpoint IDs
+  int find_max_bpID(){
+    vector<int> bp_IDs(breakpoints.size(), 0);
+    int i = 0;
+
+    for(auto bp : breakpoints){
+      bp_IDs[i++] = bp.first;
+    }
+
+    int max_bpID = *max_element(bp_IDs.begin(), bp_IDs.end());
+
+    return max_bpID;
+  }
+
+
+  int find_max_adjID(){
+    vector<int> adj_IDs(adjacencies.size(), 0);
+    int i = 0;
+
+    for(auto adj : adjacencies){
+      adj_IDs[i++] = adj.first;
+    }
+
+    int max_adjID = *max_element(adj_IDs.begin(), adj_IDs.end());
+
+    return max_adjID;
+  }
+
+
+  int find_max_pathID(){
+    vector<int> path_IDs(paths.size(), 0);
+    int i = 0;
+
+    for(auto p : paths){
+      path_IDs[i++] = p.first;
+    }
+
+    int max_pID = *max_element(path_IDs.begin(), path_IDs.end());
+
+    return max_pID;
   }
 
 
@@ -767,13 +808,20 @@ public:
   }
 
 
-  void remove_path(int path_ID){
-    for(std::vector<path*>::iterator it = paths.begin() ; it != paths.end(); ++it){
-      if((*it)->id == path_ID){
-        delete *it;
-        paths.erase((it));
-      }
+  void remove_path(int path_ID, int verbose = 0){
+    // for(std::vector<path*>::iterator it = paths.begin() ; it != paths.end(); ++it){
+    //   if((*it)->id == path_ID){
+    //     delete *it;
+    //     paths.erase((it));
+    //   }
+    // }
+    path* p = paths[path_ID];
+    if(verbose > 1){
+      cout << "remove path " << path_ID << endl;
+      p->print();
     }
+    delete p;
+    paths.erase(path_ID);
   }
 
 
@@ -1161,7 +1209,7 @@ public:
         p->edges.push_back(aid);
         adjacencies[aid] = adj;
 
-        p->nodes.push_back(start);
+        // p->nodes.push_back(start);
               
         breakpoints[end]->is_repaired = true;
         breakpoints[start]->is_repaired = true;
@@ -1231,7 +1279,7 @@ public:
     }
 
     if(verbose > 1){
-      cout << "update path " << p->id + 1 << " with adjacency " << aid << " with breakpoint " << js->id << ", " << jn->id << endl;
+      cout << "\nupdate path " << p->id + 1 << " with adjacency " << aid << " with breakpoint " << js->id << ", " << jn->id << endl;
       adj->print();
       js->print();
       jn->print();
@@ -1245,11 +1293,16 @@ public:
   // is_forward: true -- left to right (5' to 3', p-tel to q-tel), 1 -- right to left
   // check left breakpoint if the right breakpoint is the same as jp
   // check_interval: check whether the 1st adjacency is an interval
-  // circular path ?
+  // circular path will have the start node duplicated and removed during validation validate_path()
   void get_connected_breakpoint(breakpoint* js, path* p, map<int, adjacency*>& adjacencies, bool check_interval = false, int verbose = 0){
     // verbose = 1;
     int nei = js->right_jid;
-    if(verbose > 1) cout << js->id << " at path " << p->id + 1 << " right breakpoint " << nei << endl;
+    if(verbose > 1) cout << js->id << " at path " << p->id + 1 << ", traversing from right breakpoint " << nei << endl;
+
+    if(nei == -1){
+      nei = js->left_jid;
+      if(verbose > 1) cout << js->id << " at path " << p->id + 1 << ", traversing from left breakpoint (right is end) " << nei << endl;
+    }
 
     bool not_interval = false;
     if(check_interval){
@@ -1271,26 +1324,26 @@ public:
       }
     }
 
-    if(nei == -1 || not_interval){
+    if(not_interval && nei == js->right_jid){
       nei = js->left_jid;
-      if(verbose > 1) cout << js->id << " at path " << p->id + 1 << " left breakpoint " << nei << endl;
+      if(verbose > 1) cout << js->id << " at path " << p->id + 1 << ", traversing from left breakpoint (right is not an interval)" << nei << endl;
     }
 
     breakpoint* jp = js;
-
     while(nei != -1){
+      if(verbose > 1) cout << "current breakpoint " << nei << endl;
       breakpoint* jn = breakpoints[nei];
 
       bool succ = update_path_by_adj(p, jp, jn, adjacencies, verbose);
       if(!succ)  break;   // stop when the path cannot be extended any more
 
       nei = jn->right_jid;
-      if(verbose > 1) cout << jn->id << " right breakpoint " << nei << endl;
+      if(verbose > 1) cout << jn->id << ", traversing from right breakpoint " << nei << endl;
       vector<int> aids;
       get_adjacency_ID(aids, jn->id, nei, adjacencies);
       if(nei == jp->id && aids.size() == 1){  // right breakpoint has been visited
         nei = jn->left_jid;
-        if(verbose > 1) cout << jn->id << " left breakpoint " << nei << endl;
+        if(verbose > 1) cout << jn->id << ", traversing from left breakpoint (right breakpoint has been visited) " << nei << endl;
       }
       jp = jn;
     }
@@ -1298,23 +1351,38 @@ public:
 
 
   void validate_path(path* p){
-    if(p->nodes.size() != p->edges.size() + 1){
-      cout << "Incorrect number of edges in path " << p->id + 1 << endl;
+    // check path is not in current paths
+    vector<int> pids;
+    for(auto p : paths){
+      pids.push_back(p.first);
+    }    
+    if(find(pids.begin(), pids.end(), p->id) != pids.end()){
+      cout << "path already included!" << endl;
+      p->print();
+      exit(1);
+    }
+
+    if(p->nodes[0] == p->nodes[p->nodes.size() - 1]){
+      p->nodes.pop_back();
+    }
+
+    if(p->nodes.size() % 2 != 0){
+      cout << "Incorrect number of nodes in path " << p->id + 1 << endl;
       p->print();
       write_path(p, cout);
-      exit(1);        
+      exit(1);
     }  
 
     if(!p->is_circle){
-      if(p->nodes.size() % 2 != 0){
-        cout << "Incorrect number of nodes in linear path " << p->id + 1 << endl;
+      if(p->nodes.size() != p->edges.size() + 1){
+        cout << "Incorrect number of edges in linear path " << p->id + 1 << endl;
         p->print();
         write_path(p, cout);
-        exit(1);
-      }
+        exit(1);        
+      }  
     }else{
-      if(p->nodes.size() % 2 == 0){
-        cout << "Incorrect number of nodes in circular path " << p->id + 1 << endl;
+       if(p->nodes.size() != p->edges.size()){
+        cout << "Incorrect number of edges in circular path " << p->id + 1 << endl;
         p->print();
         write_path(p, cout);
         exit(1);
@@ -1324,7 +1392,6 @@ public:
 
   // # defines paths that start and end on a telomere prior to S phase
   // # i.e. these paths are fully connected upon completion of G1
-  // TODO: consider duplicated path
   void get_derivative_genome(double circular_prob, int verbose = 0){
     // verbose = 1;
     // remove previous path connections
@@ -1379,14 +1446,19 @@ public:
       }else{
         p->type = PTEL; // pTel
       }
+
       validate_path(p);
-      paths.push_back(p);
+      if(verbose > 1){
+        cout << "path after validation\n";
+        p->print();
+      }
+      paths[p->id] = p;
     }
 
     if(verbose > 1){
       cout << "\npath starting at the left telomere " << endl;
       for(auto p : paths){
-        p->print();
+        p.second->print();
       }
     }
 
@@ -1427,21 +1499,27 @@ public:
       }else{
         p->type = QTEL;
       }
+
       validate_path(p);
-      paths.push_back(p);
+      if(verbose > 1){
+        cout << "path after validation\n";
+        p->print();
+      }      
+      paths[p->id] = p;
     }
 
     if(verbose > 1){
       cout << "\npath starting at the right telomere " << endl;
       for(auto p : paths){
-        p->print();
+        p.second->print();
       }
     }
 
     vector<breakpoint*> junc_unconnected;
+    // may be repaired when inherited from parent
     for(auto jm : breakpoints){
       breakpoint* j = jm.second;
-      if(j->path_ID < 0 && !j->is_repaired){
+      if(j->path_ID < 0 && (j->left_jid == -1 || j->right_jid == -1)){
         assert(!j->is_end);
         junc_unconnected.push_back(j);
       }
@@ -1476,9 +1554,13 @@ public:
         p->is_circle = true;
       }
       assert(!breakpoints[p->nodes[size-1]]->is_end);
-
+      
       validate_path(p);
-      paths.push_back(p);
+      if(verbose > 1){
+        cout << "path after validation\n";
+        p->print();
+      }
+      paths[p->id] = p;
     }
 
     vector<breakpoint*> junc_remained;
@@ -1520,14 +1602,18 @@ public:
       assert(!breakpoints[p->nodes[size-1]]->is_end);
 
       validate_path(p);
-      paths.push_back(p);
+      if(verbose > 1){
+        cout << "path after validation\n";
+        p->print();
+      }      
+      paths[p->id] = p;
     }
 
     // all breakpoints should be in some path
     for(auto am : adjacencies){
       adjacency* a = am.second;
       if(a->path_ID < 0){
-        cout << "wrong path connection!" << endl;
+        cout << "\nwrong path connection!" << endl;
         a->print();
         exit(-1);
       }
@@ -1535,7 +1621,7 @@ public:
   }
 
 
-// update breakpoint IDs at an adjacency
+// update breakpoint IDs at a duplicated adjacency with duplicated breakpoints
 void update_adj_junc(adjacency*  adj_copy_prev, breakpoint* junc_copy_prev, breakpoint* junc_copy, int verbose = 0){
     if(adj_copy_prev->is_inverted){
       if(verbose > 1){
@@ -1550,7 +1636,16 @@ void update_adj_junc(adjacency*  adj_copy_prev, breakpoint* junc_copy_prev, brea
 }
 
 
+// update the other neighbor of last breakpoint in the duplicated path
 void update_end_junc(int last_jid_orig, int last_jid) {
+  if(!(breakpoints[last_jid_orig]->right_jid == breakpoints[last_jid]->right_jid ||
+  breakpoints[last_jid_orig]->left_jid == breakpoints[last_jid]->left_jid)){
+    cout << "Weird breakpoint neighbours!" << endl;
+    breakpoints[last_jid_orig]->print();
+    breakpoints[last_jid]->print();
+    exit(1);
+  }
+  
   assert(breakpoints[last_jid_orig]->right_jid == breakpoints[last_jid]->right_jid ||
   breakpoints[last_jid_orig]->left_jid == breakpoints[last_jid]->left_jid);
 
@@ -1567,16 +1662,23 @@ void update_end_junc(int last_jid_orig, int last_jid) {
 
 
 // when invert_adj is true, it is used for fusion path and hence copied adjacency has direction inverted from original
+// return the last copied breakpoint to form path fusion
 breakpoint* duplicate_path(path& p, vector<int>& edges_copy, vector<int>& nodes_copy, bool invert_adj = false, int verbose = 0){
-  assert(p.nodes.size() == p.edges.size() + 1);
+  // assert(p.nodes.size() == p.edges.size() + 1);
+  if(verbose > 1){
+    cout << "\nduplicate path " << p.id + 1 << endl;
+    p.print();
+  }
+  assert(p.nodes.size() % 2 == 0);
+
   int curr_eid = 0;
   adjacency* adj_copy_prev = NULL;
   adjacency* adj_prev = NULL;
   breakpoint* junc_copy_prev = NULL;
   breakpoint* junc_prev = NULL;
   map<int, int> junc_id_map;  // a map of breakpoint ids to link copied breakpoints together
-  // duplicate edge (adjacency)
-  // nodes in forward order, adjacency may be inverted
+  // duplicate by edge (adjacency) to get node orders
+  // nodes in forward order, adjacency of interval may be inverted
   // duplicated adjacency will have direction inverted from original direction
   for(int i = 0; i < p.edges.size(); i++){
     curr_eid = p.edges[i];
@@ -1629,25 +1731,24 @@ breakpoint* duplicate_path(path& p, vector<int>& edges_copy, vector<int>& nodes_
   }
 
   assert(curr_eid >= 0);
-  // duplicate last node (breakpoint) when the path is not circular, since #node = #edge + 1
-  breakpoint* bp = breakpoints[p.nodes[p.nodes.size()-1]];
+  // duplicate last node (breakpoint) when the path is not circular, since #node = #edge + 1  
   breakpoint* junc_copy = NULL;
-  if(!p.is_circle){   
+  if(!p.is_circle){  
+    breakpoint* bp = breakpoints[p.nodes[p.nodes.size()-1]]; 
     junc_copy = new breakpoint(*bp);
     junc_copy->id = breakpoints.rbegin()->first + 1;
     breakpoints[junc_copy->id] = junc_copy;
     junc_id_map[bp->id] = junc_copy->id;
+    nodes_copy.push_back(junc_copy->id);
+
+    if(verbose > 1){
+      cout << "copy breakpoint " << bp->id << endl;
+      bp->print();
+      junc_copy->print();
+    }
   }else{
-    assert(p.nodes[0] == p.nodes[p.nodes.size()-1]);
+    assert(nodes_copy.size() == edges_copy.size());
     junc_copy = breakpoints[nodes_copy[0]];
-  }
-
-  nodes_copy.push_back(junc_copy->id);
-
-  if(verbose > 1){
-    cout << "copy breakpoint " << bp->id << endl;
-    bp->print();
-    junc_copy->print();
   }
 
   // the neighbor updated depends on direction
@@ -1661,9 +1762,6 @@ breakpoint* duplicate_path(path& p, vector<int>& edges_copy, vector<int>& nodes_
   }
 
   int nbp = nodes_copy.size();
-  if(p.is_circle){
-    nbp--;
-  }
   for(int i = 0; i < nbp; i++){
     int jid = nodes_copy[i];
     if(verbose > 1){
@@ -1690,12 +1788,12 @@ breakpoint* duplicate_path(path& p, vector<int>& edges_copy, vector<int>& nodes_
       j->print();
     }
   }
-  assert(nodes_copy.size() == edges_copy.size() + 1);
 
   return junc_copy;
 }
 
-// duplicate a non-circular incomplete path p and related objects (breakpoints and adjacencies) so that p = 2p
+// assume p->type != COMPLETE
+// duplicate a non-circular incomplete path p and related objects (breakpoints and adjacencies) 
 void duplicate_path_fusion(path& p, int verbose = 0){
   vector<int> edges_copy;
   vector<int> nodes_copy;
@@ -1716,6 +1814,13 @@ void duplicate_path_fusion(path& p, int verbose = 0){
     // only the neighbor not updated will be equal to original node's neighbor
     update_end_junc(last_jid_orig, last_jid);
 
+    if((breakpoints[last_jid_orig]->left_jid < 0 || breakpoints[last_jid_orig]->right_jid < 0)){
+      cout << "Weird breakpoint neighbours after updating!" << endl;
+      breakpoints[last_jid_orig]->print();
+      breakpoints[last_jid]->print();
+      exit(1);
+    }
+
     assert(breakpoints[last_jid_orig]->left_jid >= 0 && breakpoints[last_jid_orig]->right_jid >= 0);
     assert(breakpoints[last_jid]->left_jid >= 0 && breakpoints[last_jid]->right_jid >= 0);
 
@@ -1725,27 +1830,28 @@ void duplicate_path_fusion(path& p, int verbose = 0){
     p.edges.push_back(adj_var->id);
     p.edges.insert(p.edges.end(), edges_copy.rbegin(), edges_copy.rend());
     p.nodes.insert(p.nodes.end(), nodes_copy.rbegin(), nodes_copy.rend());
-  }
-  if(p.type == NONTEL){  // add one more connection to form a ring
-    int first_jid_orig = p.nodes[0];
-    int first_jid = nodes_copy[0];
 
-    int aid = adjacencies.rbegin()->first + 1;
-    adjacency* adj_var = new adjacency(cell_ID, aid, p.id, first_jid_orig, first_jid, VAR, NONTEL, T2TINV);
-    adjacencies[adj_var->id] = adj_var;
+    if(p.type == NONTEL){  // add one more connection to form a ring
+      int first_jid_orig = p.nodes[0];
+      int first_jid = nodes_copy[0];
 
-    update_end_junc(first_jid_orig, first_jid);
+      int aid = adjacencies.rbegin()->first + 1;
+      adjacency* adj_var = new adjacency(cell_ID, aid, p.id, first_jid_orig, first_jid, VAR, NONTEL, T2TINV);
+      adjacencies[adj_var->id] = adj_var;
 
-    assert(breakpoints[first_jid_orig]->left_jid >= 0 && breakpoints[first_jid_orig]->right_jid >= 0);
-    assert(breakpoints[first_jid]->left_jid >= 0 && breakpoints[first_jid]->right_jid >= 0);
+      update_end_junc(first_jid_orig, first_jid);
 
-    breakpoints[first_jid_orig]->is_repaired = true;
-    breakpoints[first_jid]->is_repaired = true;
+      assert(breakpoints[first_jid_orig]->left_jid >= 0 && breakpoints[first_jid_orig]->right_jid >= 0);
+      assert(breakpoints[first_jid]->left_jid >= 0 && breakpoints[first_jid]->right_jid >= 0);
 
-    p.edges.push_back(adj_var->id);
-    p.is_circle = true;
-  }
-  if(p.type == QTEL){  // qTel -- connect first breakpoint, path start from qTel
+      breakpoints[first_jid_orig]->is_repaired = true;
+      breakpoints[first_jid]->is_repaired = true;
+
+      p.edges.push_back(adj_var->id);
+      p.is_circle = true;
+    }    
+  }else{
+    assert(p.type == QTEL);  // qTel -- connect first breakpoint, path start from qTel
     int last_jid_orig = p.nodes[p.nodes.size() - 1];
     int last_jid = junc_copy->id;
 
@@ -1764,7 +1870,6 @@ void duplicate_path_fusion(path& p, int verbose = 0){
     p.edges.push_back(adj_var->id);
     p.edges.insert(p.edges.end(), edges_copy.rbegin(), edges_copy.rend());
     p.nodes.insert(p.nodes.end(), nodes_copy.rbegin(), nodes_copy.rend());
-
   }
 
   if(p.type == PTEL || p.type == QTEL){
@@ -1818,7 +1923,7 @@ void get_unique_interval(int verbose = 0){
     if(a->type == INTERVAL){
       breakpoint* j1 = breakpoints[a->junc_id1];
       breakpoint* j2 = breakpoints[a->junc_id2];
-      if(verbose > 1){
+      if(verbose > 2){
         a->print();
         j1->print();
         j2->print();
