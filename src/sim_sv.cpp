@@ -101,7 +101,6 @@ int main(int argc, char const *argv[]){
       ("stat_type,s", po::value<int>(&stat_type)->default_value(4), "type of summary statistics. 0: variance; 1: clone-pairwise differences; 2: average CNP; 3: complete CNP; 4: sample-pairwise differences")
       ("use_std", po::value<int>(&use_std)->default_value(0), "whether or not to use standard deviation of pairwise divergence. If not, the variance is output")
       // ("bp_cutoff", po::value<double>(&BP_CUTOFF)->default_value(BP_CUTOFF), "threshold to determine whether a breakpoint can be detected or not")
-      // ("bin_cutoff", po::value<double>(&BIN_CUOFF)->default_value(BIN_CUOFF), "threshold to determine whether a bin can be detected as altered or not")
       // ("frac_cutoff", po::value<double>(&frac_cutoff)->default_value(0.5), "cutoff of counting breakpoints")
 
       // options related to output
@@ -110,7 +109,6 @@ int main(int argc, char const *argv[]){
       ("write_shatterseek", po::value<int>(&write_shatterseek)->default_value(0), "whether or not to write files for shatterseek")
       ("write_sumstats", po::value<int>(&write_sumstats)->default_value(1), "whether or not to write summary statistics")
       ("write_genome", po::value<int>(&write_genome)->default_value(0), "whether or not to write derivative genome")
-      // ("write_sumstats_only", po::value<int>(&write_sumstats_only)->default_value(0), "whether or not to write summary statistics only for efficient inference")
 
       ("track_all", po::value<int>(&track_all)->default_value(0), "whether or not to keep track of all cells")
       ("seed", po::value<unsigned long>(&seed)->default_value(0), "seed used for generating random numbers")
@@ -165,8 +163,6 @@ int main(int argc, char const *argv[]){
     Model start_model(model_ID, genotype_diff, growth_type, fitness, use_alpha);
     int n_unrepaired = round(n_dsb * frac_unrepaired);
     Cell_ptr start_cell = new Cell(1, 0, birth_rate, death_rate, n_dsb, n_unrepaired, 0);
-    genome g(1);
-    start_cell->g = g;
     Clone* s = new Clone(1, 0);
     
     if(verbose > 0) cout << "Start cell growth " << endl;
@@ -189,7 +185,17 @@ int main(int argc, char const *argv[]){
       if(verbose > 0){
         cout << "Cell " << cell->cell_ID << endl;
       }
-      cell->g.get_bps_per_chr(bps_by_chr, verbose);
+      cell->g->get_bps_per_chr(bps_by_chr, verbose);
+    }
+
+    string filetype = ".tsv";
+    if(write_sumstats){
+      // write summary statistics in the simulation
+      string fname_stat_sim = outdir +"/" + "sumStats_sim" + filetype;
+      ofstream fout(fname_stat_sim);
+      fout << "nCell\tnDSB\tnUnrepair\tnComplex\tnMbreak\tnTelofusion\n";
+      fout << final_cells.size() << "\t" << n_dsb << "\t" << n_unrepaired << "\t" + to_string(s->n_complex_path) + "\t" + to_string(s->n_path_break) + "\t" + to_string(s->n_telo_fusion) << endl;
+      fout.close();
     }
 
     if(verbose > 0) cout << "\nComputing CN for each cell " << endl;
@@ -200,36 +206,9 @@ int main(int argc, char const *argv[]){
       }
       // cell->print_bp_adj();
       // merge segments with the same CN by haplotype
-      cell->g.calculate_segment_cn(bps_by_chr, verbose);
-    }
-    if(verbose > 0) s->print_all_cells(final_cells, verbose);
+      cell->g->calculate_segment_cn(bps_by_chr, verbose);
 
-    string filetype = ".tsv";
-
-    if(write_circos){
-      if(verbose > 0) cout << "\nWrite output for circos plot" << endl;
-      for(auto cell : final_cells){
-        string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
-        string fname_sv = outdir +"/" + "sv_data_c" + midfix + filetype;
-        cell->write_sv(fname_sv);
-        string fname_cn = outdir +"/" + "cn_data_c" + midfix + filetype;
-        cell->write_cnv(fname_cn);
-      }
-    }
-
-    // write CN and SV data to tsv - for ShatterSeek
-    if(write_shatterseek){
-      if(verbose > 0) cout << "\nWrite output for ShatterSeek" << endl;
-      for(auto cell : final_cells){
-        string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
-        string fname_sv_ss = outdir +"/" + "SVData_c" + midfix + filetype;
-        string fname_cn_ss = outdir +"/" + "CNData_c" + midfix + filetype;
-        cell->write_shatterseek(fname_sv_ss, fname_cn_ss);
-      }
-    }
-
-    // compute and output summary statistics for inference
-    for(auto cell : final_cells){
+      // compute and output summary statistics for inference
       cell->get_summary_stats();
       // int nSV = cell->n_dup + cell->n_del + cell->n_h2h + cell->n_t2t;
       cout << cell->div_occur << "\t" << cell->cell_ID;
@@ -240,33 +219,48 @@ int main(int argc, char const *argv[]){
         cout << "\t" << cell->chr_bp_unique[i].size() << "\t" << nSV_chr << "\t" << cell->chr_n_osc2[i] << "\t" << cell->chr_n_osc3[i];
       }
       cout << endl;
-    }
 
-    if(write_sumstats){
-      // write summary statistics in the simulation
-      string fname_stat_sim = outdir +"/" + "sumStats_sim" + filetype;
-      ofstream fout(fname_stat_sim);
-      fout << "nCell\tnDSB\tnUnrepair\tnComplex\tnMbreak\tnTelofusion\n";
-      fout << final_cells.size() << "\t" << n_dsb << "\t" << n_unrepaired << "\t" + to_string(s->n_complex_path) + "\t" + to_string(s->n_path_break) + "\t" + to_string(s->n_telo_fusion) << endl;
-      fout.close();
+      if(write_sumstats){
+        if(verbose > 0) cout << "\nWrite output for summary statistics" << endl;
 
-      if(verbose > 0) cout << "\nWrite output for summary statistics" << endl;
-      for(auto cell : final_cells){
         string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
         string fname_stat = outdir +"/" + "sumStats_total_c" + midfix + filetype;
         string fname_stat_chr = outdir +"/" + "sumStats_chrom_c" + midfix + filetype;
         cell->write_summary_stats(fname_stat, fname_stat_chr);
       }
-    }
 
-    if(write_genome){
-      if(verbose > 0) cout << "Write output for the derivative genome" << endl;
-      for(auto cell : final_cells){
+      if(write_circos){
+        if(verbose > 0) cout << "\nWrite output for circos plot" << endl;
+        string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
+        string fname_sv = outdir +"/" + "sv_data_c" + midfix + filetype;
+        cell->write_sv(fname_sv);
+        string fname_cn = outdir +"/" + "cn_data_c" + midfix + filetype;
+        cell->write_cnv(fname_cn);
+      }
+
+      // write CN and SV data to tsv - for ShatterSeek
+      if(write_shatterseek){
+        if(verbose > 0) cout << "\nWrite output for ShatterSeek" << endl;
+        string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
+        string fname_sv_ss = outdir +"/" + "SVData_c" + midfix + filetype;
+        string fname_cn_ss = outdir +"/" + "CNData_c" + midfix + filetype;
+        cell->write_shatterseek(fname_sv_ss, fname_cn_ss);
+      }
+
+      if(write_genome){
+        if(verbose > 0) cout << "Write output for the derivative genome" << endl;
         string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
         string fname = outdir +"/" + "genome_c" + midfix + filetype;
         cell->write_genome(fname);
       }
-    }
+
+    }      
+    
+    if(verbose > 0) s->print_all_cells(final_cells, verbose);
+
+
+    delete s;
+    gsl_rng_free(r);
 
     return 0;
 }

@@ -125,7 +125,7 @@ class breakpoint{
 public:
   int id;   // keep increasing when new breakpoints are added
   int cell_ID;
-  int path_ID = -1;  // a breakpoint can only belong to one path
+  int path_ID;  // a breakpoint can only belong to one path
   int chr;
   int pos;
   int side;   // 0 left or 1 right, strand in RCK, orientation
@@ -133,8 +133,8 @@ public:
   // int cn;  // there may be multiple copies due to replication??
   bool is_repaired; // end breakpoint has only one connection (not necessarily telomere)
   // bool is_visited;  // whether in a path or not, used to determine circular paths
-  int left_jid = -1;
-  int right_jid = -1;
+  int left_jid;
+  int right_jid;
   bool is_end;  // whether it is at the end of genome or not, correspond to telomere when DSBs are not introduced to telomere regions
   // bool is_centromeric; // whether it overlaps with centromere, correspond to centromere when DSBs are not introduced to centromere regions
 
@@ -144,6 +144,10 @@ public:
 
 
   breakpoint(int cell_ID, int id, int chr, int pos, int side, int haplotype, bool is_end, bool is_repaired){
+    this->path_ID = -1;
+    this->left_jid = -1;
+    this->right_jid = -1;
+
     this->cell_ID = cell_ID;
     this->id = id;
     this->chr = chr;
@@ -289,7 +293,7 @@ public:
     if(is_inverted){
       invt = "inverted";
     }
-    cout << "Adjacency " << id << " in cell " << cell_ID << " at path " << path_ID + 1 << " with left breakpoint " << junc_id1 << " at " << breakpoints[junc_id1]->chr + 1 << "-" << breakpoints[junc_id1]->pos << " and right breakpoint " << junc_id2 << " at " << breakpoints[junc_id2]->chr + 1 << "-" << breakpoints[junc_id2]->pos << ", " << cent << ", " << invt << ", " << get_telomere_type_string(telomeric_type) << ", " << get_sv_type_string(sv_type) << endl;
+    cout << "Adjacency " << id << " in cell " << cell_ID << " at path " << path_ID + 1 << " with left breakpoint " << junc_id1 << " at " << breakpoints[junc_id1]->chr + 1 << "-" << get_haplotype_string(breakpoints[junc_id1]->haplotype) << "-" << breakpoints[junc_id1]->pos << " and right breakpoint " << junc_id2 << " at " << breakpoints[junc_id2]->chr + 1 << "-" << get_haplotype_string(breakpoints[junc_id2]->haplotype) << "-" << breakpoints[junc_id2]->pos << ", " << cent << ", " << invt << ", " << get_telomere_type_string(telomeric_type) << ", " << get_sv_type_string(sv_type) << endl;
   }
 
   // this method checks whether an interval adjacency is telomeric
@@ -504,8 +508,6 @@ public:
 };
 
 
-
-
 class genome {
 public:
   int cell_ID;
@@ -519,8 +521,7 @@ public:
   // map<pair<int, int>, vector<breakpoint*>> junc_map;  // group breakpoints by haplotype and chr to facilitate neighbor searching
   map<pair<int, int>, vector<interval>>  cn_by_chr_hap;
   map<pair<int, int>, vector<interval>>  cn_by_chr_hap_merged;
-  vector<segment*> segments;
-  // int n_adj;   // total number of adjacencies introduced in history, used to get unique adjacency ID;
+  map<int, vector<segment*>> chr_segments;     // group segments by chr 
 
   // number of DSBs on each chr each haplotype
   // vector<int> vec_n_dsb;   // hard to maintain across cell divisions due to random path distributions
@@ -534,7 +535,7 @@ public:
     // cout << "start releasing pointers" << endl;
 
     for(auto p : paths){
-         delete p.second;  
+      delete p.second;  
     }
     for(auto am : adjacencies){
       delete am.second;
@@ -542,15 +543,17 @@ public:
     for(auto jm : breakpoints){
       delete jm.second;
     }
-    for(auto s : segments){
-      delete s;
+    for(auto sg : chr_segments){
+      for(auto s : sg.second){
+        delete s;
+      }     
     }
 
     // cout << "finish releasing pointers" << endl;
   }
 
   genome(){
-
+    
   }
 
   // only breakpoint at ends and interval adjacencies
@@ -612,7 +615,6 @@ public:
 
       chr_ends.insert(chr_ends.end(), {j1->id, j2->id, j3->id, j4->id});
     }
-    // n_adj = adjacencies.size();
 
     // get_breakpoint_map();
   };
@@ -790,6 +792,7 @@ public:
 
         delete adj;
         adjacencies.erase(it);
+
         return aid;
       }
     }
@@ -809,12 +812,6 @@ public:
 
 
   void remove_path(int path_ID, int verbose = 0){
-    // for(std::vector<path*>::iterator it = paths.begin() ; it != paths.end(); ++it){
-    //   if((*it)->id == path_ID){
-    //     delete *it;
-    //     paths.erase((it));
-    //   }
-    // }
     path* p = paths[path_ID];
     if(verbose > 1){
       cout << "remove path " << path_ID << endl;
@@ -826,10 +823,9 @@ public:
 
 
   // jid and aid are passed by reference to automatically get the new IDs for next new breakpoints
-  // , bool update_path = false
   void add_new_breakpoint(int& jid, int &aid, int chr, int bp, int haplotype, int j1l_id = -1, int j2r_id = -1, bool reset_pathID = false, int verbose = 0){
     bool is_end = false;
-    // a new breakpoint will generate two new segments j1, j2
+    // a new breakpoint will generate two new segment j1, j2
     // (j1, j2) still unconnected, need to be repaired
     bool is_repaired = false;
 
@@ -871,7 +867,6 @@ public:
     adjacency* adj1 = new adjacency(cell_ID, aid++, j1->path_ID, j1l->id, j1->id, INTERVAL, NONTEL, NONE);
     adj1->set_telomeric_type(breakpoints);
     adjacencies[adj1->id] = adj1;
-    // n_adj += 1;
     j1l->right_jid = j1->id;
     j1->left_jid = j1l->id;
 
@@ -885,7 +880,6 @@ public:
     adjacencies[adj2->id] = adj2;
     j2->right_jid = j2r->id;
     j2r->left_jid = j2->id;
-    // n_adj += 1;
 
     if(verbose > 1){
       cout << "\nadded two adjacencies introduced by break " << endl;
@@ -907,6 +901,7 @@ public:
     //   a->print();
     // }
     remove_adjacency(j1l->id, j2r->id, adj1, adj2, verbose);
+   
     // remove from paths
     // cout << "adjacencies after removing j1l to j2r" << endl;
     // for(auto a : adjacencies){
@@ -921,7 +916,7 @@ public:
   // iminate DSB by introducing breakpoints (breakpoints) across the whole genome, following infinite sites assumption
   // a breakpoint will not disappear once exist
   // n_dsb: number of breakpoints for each chromosome
-  // TODO: add interval DSB probability based on overlapping with FSs
+  // TODO: add interval DSB probability based on overlapping with fragile sites
   void generate_dsb(int n_dsb, int verbose = 0){
     // group breakpoints by haplotype and chr for sorting
     // get_breakpoint_map();
@@ -932,7 +927,7 @@ public:
       cout << jid << " breakpoints before introducing DSB" << endl;
     }
 
-    for(int i = 0; i < n_dsb; i = i + 1){
+    for(int i = 0; i < n_dsb; i++){
       // a breakpoint may be at centromere or telomere
       // a chromosome may lost some regions, only feasible on available segments
       int bp = 0;
@@ -952,7 +947,6 @@ public:
         // each chr has two haplotypes, which haplotype the breakpoint is on
         haplotype = myrng(2);
         // cout << " select chr " << chr << " haplotype " << haplotype << endl;
-
         pair<int, int> key(chr, haplotype);
 
         if(cn_by_chr_hap.find(key) == cn_by_chr_hap.end()){
@@ -993,69 +987,60 @@ public:
   }
 
 
-  SV_type set_var_type(breakpoint* j1, breakpoint* j2){
-        SV_type sv_type = NONE;
-        if(j1->side == HEAD && j2->side == TAIL){
-          assert(j1->left_jid >= 0);
-          assert(j2->right_jid >= 0);
-          j1->right_jid = j2->id;
-          j2->left_jid = j1->id;
-          // DEL (deletion-like; +/-)
-          sv_type = DEL;
-          // interval in the reference genome is lost
-          if(j1->chr != j2->chr){
-            sv_type = TRA;
-            // chr_type_num[j1->chr][sv_type] += 1;
-            // chr_type_num[j2->chr][sv_type] += 1;
-          }else{
-            // chr_type_num[j1->chr][sv_type] += 1;
-          }
-        }else if(j1->side == HEAD && j2->side == HEAD){ //h2hINV
-          assert(j1->left_jid >= 0);
-          assert(j2->left_jid >= 0);
-          j1->right_jid = j2->id;
-          j2->right_jid = j1->id;
-          // h2hINV (head-to-head inversion; +/+)
-          sv_type = H2HINV;
-          if(j1->chr != j2->chr){
-            sv_type = TRA;
-            // chr_type_num[j1->chr][sv_type] += 1;
-            // chr_type_num[j2->chr][sv_type] += 1;
-          }else{
-            // chr_type_num[j1->chr][sv_type] += 1;
-          }
-        }else if(j1->side == TAIL && j2->side == HEAD){
-          assert(j1->right_jid >= 0);
-          assert(j2->left_jid >= 0);
-          j1->left_jid = j2->id;
-          j2->right_jid = j1->id;
-          // DUP (duplication-like; -/+)
-          sv_type = DUP;
-          if(j1->chr != j2->chr){
-            sv_type = TRA;
-            // chr_type_num[j1->chr][sv_type] += 1;
-            // chr_type_num[j2->chr][sv_type] += 1;
-          }else{
-            // chr_type_num[j1->chr][sv_type] += 1;
-          }
-        }else{  //if(j1->side == TAIL && j2->side == TAIL)
-          assert(j1->right_jid >= 0);
-          assert(j2->right_jid >= 0);
-          j1->left_jid = j2->id;
-          j2->left_jid = j1->id;
-          // t2tINV (tail-to-tail inversion; -/-)
-          sv_type = T2TINV;
-          if(j1->chr != j2->chr){
-            sv_type = TRA;
-            // chr_type_num[j1->chr][sv_type] += 1;
-            // chr_type_num[j2->chr][sv_type] += 1;
-          }else{
-            // chr_type_num[j1->chr][sv_type] += 1;
-          }
-        }
+  // when j1 and j2 are on the same chromosome, need to ensure the coordinates of j1 is smaller than j2
+  SV_type set_var_type(breakpoint* j1, breakpoint* j2, int verbose = 0) {
+      SV_type sv_type = NONE;
 
-        return sv_type;
+      if(j1->side == HEAD && j2->side == TAIL){
+        assert(j1->left_jid >= 0);
+        assert(j2->right_jid >= 0);
+        j1->right_jid = j2->id;
+        j2->left_jid = j1->id;
+        // DEL (deletion-like; +/-)
+        sv_type = DEL;
+        // interval in the reference genome is lost
+        if(j1->chr != j2->chr){
+          sv_type = TRA;
+        }else{
+        }
+      }else if(j1->side == HEAD && j2->side == HEAD){ //h2hINV
+        assert(j1->left_jid >= 0);
+        assert(j2->left_jid >= 0);
+        j1->right_jid = j2->id;
+        j2->right_jid = j1->id;
+        // h2hINV (head-to-head inversion; +/+)
+        sv_type = H2HINV;
+        if(j1->chr != j2->chr){
+          sv_type = TRA;
+        }else{
+        }
+      }else if(j1->side == TAIL && j2->side == HEAD){
+        assert(j1->right_jid >= 0);
+        assert(j2->left_jid >= 0);
+        j1->left_jid = j2->id;
+        j2->right_jid = j1->id;
+        // DUP (duplication-like; -/+)
+        sv_type = DUP;
+        if(j1->chr != j2->chr){
+          sv_type = TRA;
+        }else{
+        }
+      }else{  //if(j1->side == TAIL && j2->side == TAIL)
+        assert(j1->right_jid >= 0);
+        assert(j2->right_jid >= 0);
+        j1->left_jid = j2->id;
+        j2->left_jid = j1->id;
+        // t2tINV (tail-to-tail inversion; -/-)
+        sv_type = T2TINV;
+        if(j1->chr != j2->chr){
+          sv_type = TRA;
+        }else{
+        }
+      }
+
+      return sv_type;
   }
+
 
   // n_unrepaired: number of unrepaired DSBs, each DSB introduces two breakpoints
   void repair_dsb(int n_unrepaired, vector<breakpoint*>& junc2repair, int verbose = 0){
@@ -1066,7 +1051,6 @@ public:
 
     // connect segments randomly to get variant adjacencies (repair DSBs)
     // only breakpoints with missing connections need to be repaired
-    // vector<breakpoint> junc2repair(breakpoints.begin(), breakpoints.end());
     for(auto jm : breakpoints){
       breakpoint* j = jm.second;
       if(!j->is_repaired){
@@ -1116,6 +1100,26 @@ public:
       // each breakpoint node should has degree 2
       adjacency* adj = NULL;
 
+      // j1 and j2 should be in creasing order of coordinates when repairing
+      breakpoint* jm = NULL; 
+      if(j1->chr == j2->chr && j1->pos > j2->pos){
+        if(verbose > 1){
+          cout << "switch j1 and j2 to have increasing coordinates" << endl;
+          j1->print();
+          j2->print();
+        }
+
+        jm = j1;
+        j1 = j2;
+        j2 = jm;
+
+        if(verbose > 1){
+          cout << "switched j1 and j2 with increasing coordinates" << endl;
+          j1->print();
+          j2->print();
+        }        
+      }
+
       SV_type sv_type = NONE;
       // determine direction by breakpoint side
       if(j1->chr == j2->chr && j1->pos == j2->pos && j1->haplotype == j2->haplotype && j1->side != j2->side){
@@ -1139,14 +1143,12 @@ public:
         // cout << "after updating sv type count " << chr_type_num[j1->chr][sv_type] << endl;
       }else{
         // variant adjacencies
-        sv_type = set_var_type(j1, j2);
+        sv_type = set_var_type(j1, j2, verbose);
         adj = new adjacency(cell_ID, aid++, -1, j1->id, j2->id, VAR, NONTEL, sv_type);
         adj->set_telomeric_type(breakpoints);
         adjacencies[adj->id] = adj;
         // adj->print();
       } // else
-
-      // this->n_adj++;
     } // while
 
     if(verbose > 1){
@@ -1156,7 +1158,7 @@ public:
       }
       cout << adjacencies.size() << " adjacencies after repairing dsb" << endl;
       for(auto a : adjacencies){
-        (a.second)->print();
+        (a.second)->print_interval(breakpoints);
       }
     }
   }
@@ -1202,7 +1204,27 @@ public:
 
         // add another adjacency from end to start
         int aid = adjacencies.rbegin()->first + 1;
-        SV_type sv_type = set_var_type(breakpoints[end], breakpoints[start]);
+        breakpoint* j1 = breakpoints[end];
+        breakpoint* j2 = breakpoints[start];
+        breakpoint* jm = NULL; 
+        if(j1->chr == j2->chr && j1->pos > j2->pos){
+          if(verbose > 1){
+            cout << "switch j1 and j2 to have increasing coordinates" << endl;
+            j1->print();
+            j2->print();
+          }
+
+          jm = j1;
+          j1 = j2;
+          j2 = jm;
+
+          if(verbose > 1){
+            cout << "switched j1 and j2 with increasing coordinates" << endl;
+            j1->print();
+            j2->print();
+          }        
+        }
+        SV_type sv_type = set_var_type(j1, j2, verbose);
         adjacency* adj = new adjacency(cell_ID, aid, p->id, end, start, VAR, NONTEL, sv_type);
         adj->is_inverted = true;
 
@@ -1222,7 +1244,7 @@ public:
 
 
   // add one edge into path p, return success status
-  bool update_path_by_adj(path* p, breakpoint* js, breakpoint* jn, map<int, adjacency*>& adjacencies, int verbose = 0){
+  bool update_path_by_adj(path* p, const breakpoint* js, breakpoint* jn, map<int, adjacency*>& adjacencies, int verbose = 0){
     if(verbose > 1){
       cout << "adding edge from " << js->id << " to " << jn->id << " to path " << p->id + 1 << endl;
       p->print();
@@ -1259,6 +1281,7 @@ public:
 
     p->nodes.push_back(jn->id);
     p->edges.push_back(aid);
+
     // update adjacency direction based on current path
     if(js->id == adj->junc_id2){
       adj->is_inverted = true;
@@ -1272,17 +1295,16 @@ public:
       ((js->pos <= CENT_STARTS[js->chr] && jn->pos >= CENT_ENDS[js->chr]) ||
       (jn->pos <= CENT_STARTS[js->chr] && js->pos >= CENT_ENDS[js->chr]))
       ){
-    // if(adj->is_centromeric){
-      // cout << "one more centromere" << endl;
-      p->n_centromere += 1;
-      adj->is_centromeric = true;
+        if(verbose > 1){
+          cout << "one more centromere" << endl;
+        }
+        p->n_centromere += 1;
+        adj->is_centromeric = true;
     }
 
     if(verbose > 1){
       cout << "\nupdate path " << p->id + 1 << " with adjacency " << aid << " with breakpoint " << js->id << ", " << jn->id << endl;
       adj->print();
-      js->print();
-      jn->print();
     }
 
     return true;
@@ -1335,6 +1357,11 @@ public:
       breakpoint* jn = breakpoints[nei];
 
       bool succ = update_path_by_adj(p, jp, jn, adjacencies, verbose);
+      if(verbose > 1){
+        js->print();
+        jn->print();
+      }
+
       if(!succ)  break;   // stop when the path cannot be extended any more
 
       nei = jn->right_jid;
@@ -1350,7 +1377,35 @@ public:
   }
 
 
-  void validate_path(path* p){
+  void check_duplicated_breakpoint(breakpoint* bp){
+    // check path is not in current paths
+    vector<int> ids;
+    for(auto bp : breakpoints){
+      ids.push_back(bp.first);
+    }    
+    if(find(ids.begin(), ids.end(), bp->id) != ids.end()){
+      cout << "breakpoint already included!" << endl;
+      bp->print();
+      exit(1);
+    }
+  }
+
+
+  void check_duplicated_adjacency(adjacency* adj){
+    // check path is not in current paths
+    vector<int> ids;
+    for(auto adj : adjacencies){
+      ids.push_back(adj.first);
+    }    
+    if(find(ids.begin(), ids.end(), adj->id) != ids.end()){
+      cout << "adjacency already included!" << endl;
+      adj->print();
+      exit(1);
+    }
+  }
+
+
+  void check_duplicated_path(path* p){
     // check path is not in current paths
     vector<int> pids;
     for(auto p : paths){
@@ -1361,6 +1416,11 @@ public:
       p->print();
       exit(1);
     }
+  }
+
+
+  void validate_path(path* p){
+    check_duplicated_path(p);
 
     if(p->nodes[0] == p->nodes[p->nodes.size() - 1]){
       p->nodes.pop_back();
@@ -1609,17 +1669,30 @@ public:
       paths[p->id] = p;
     }
 
-    // all breakpoints should be in some path
+    check_derived_genome();
+  }
+
+
+// make sure all breakpoints and adjacencies are in some paths
+void check_derived_genome(){
+    for(auto bp : breakpoints){
+      breakpoint* b = bp.second;
+      if(b->path_ID < 0){
+        cout << "\nwrong path connection with missing breakpoint!" << endl;
+        b->print();
+        exit(1);
+      }
+    }
+
     for(auto am : adjacencies){
       adjacency* a = am.second;
       if(a->path_ID < 0){
-        cout << "\nwrong path connection!" << endl;
+        cout << "\nwrong path connection  with missing adjacency!" << endl;
         a->print();
-        exit(-1);
+        exit(1);
       }
     }
-  }
-
+}
 
 // update breakpoint IDs at a duplicated adjacency with duplicated breakpoints
 void update_adj_junc(adjacency*  adj_copy_prev, breakpoint* junc_copy_prev, breakpoint* junc_copy, int verbose = 0){
@@ -1889,37 +1962,17 @@ void duplicate_path_fusion(path& p, int verbose = 0){
 }
 
 
-// "nDSB", "nDel", "nInv", "nIns", "nDup", 'cycleID', 'nBiasedChroms', 'nMitosisBreaks'
-// "chr", "nDSB", "nOsc", "nDel", "nIns", "nInv", "nDup"
-void get_summary_stats(/* arguments */) {
-  // initialize for each chr
-  vector<int> stat_total;
-  vector<int> stat_chr;
-
-  // writing SV deletions & duplications for shatterseek and circos
-  for(int i = 0; i < NUM_CHR; i++){
-    // write SV deletions - for Circos (by haplotype)
-    // sv_type=DEL
-    // write SV duplications - for shatterseek
-    // write SV deletions - for shatterseek
-  }
-
-  // count oscillating CNs
-  for(int i = 0; i < NUM_CHR; i++){
-
-  }
-
-}
-
-
+// assume adjacencies contain all edges
 void get_unique_interval(int verbose = 0){
   cn_by_chr_hap.clear();
+
   if(verbose > 1) cout << "Collecting all the unique genomic intervals\n";
   // get CN for each interval
   // chr, start, end, haplotype : cn
   map<haplotype_pos, int> cn_by_pos;  // default value is 0
   for(auto am : adjacencies){
     adjacency* a = am.second;
+    assert(a != NULL);
     if(a->type == INTERVAL){
       breakpoint* j1 = breakpoints[a->junc_id1];
       breakpoint* j2 = breakpoints[a->junc_id2];
@@ -2035,7 +2088,7 @@ void get_merged_interval(int verbose = 0){
         vector<interval> intls = cnp.second;
         for(int i = 0; i < intls.size(); i++){
           interval intl = intls[i];
-          cout << cell_ID << "\t" << chr + 1 << "\t" << get_haplotype_string(haplotype) << "\t" << intl.start << "\t" << intl.end  << "\t" << intl.jid_start << "\t" << intl.end << "\t"  << intl.cn << "\n";
+          cout << cell_ID << "\t" << chr + 1 << "\t" << get_haplotype_string(haplotype) << "\t" << intl.start << "\t" << intl.end  << "\t" << intl.jid_start << "\t" << intl.jid_end << "\t"  << intl.cn << "\n";
         }
       }
     }
@@ -2077,7 +2130,7 @@ void get_merged_interval(int verbose = 0){
   // Compute allele-specific and total copy number
   void calculate_segment_cn(map<int, set<int>>& bps_by_chr, int verbose = 0){
     // verbose = 1;
-    this->segments.clear();
+    assert(this->chr_segments.size() == 0);
     int sid = 0;
 
     // split the regions according to the breakpoints
@@ -2138,7 +2191,7 @@ void get_merged_interval(int verbose = 0){
       if(verbose > 1) cout << "CNs for segment" << endl;
       for(auto intl : intls){
         segment* s = new segment(sid++, cell_ID, chr, intl.first, intl.second, cn_A[intl], cn_B[intl]);
-        this->segments.push_back(s);
+        this->chr_segments[chr].push_back(s);
         if(verbose > 1) s->print();
       }
     }

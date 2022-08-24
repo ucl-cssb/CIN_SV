@@ -80,6 +80,7 @@ unsigned long setup_rng(unsigned long set_seed){
     // cout << "seed:" << "\t" << t << "\t" << pid << "\t" << abs(s) << endl;
     std::cout << "seed:" << "\t" << abs(s) << std::endl;
     gsl_rng_set (r, abs(s));
+    
     return(abs(s));
   }
 }
@@ -355,7 +356,9 @@ int find_max_size(int x, const vector<int>& vec){
         x_lens.push_back(rle_vec_len[i]);
       }      
     }
+
     int max = *max_element(x_lens.begin(), x_lens.end());
+
     return max;
   }  
 }
