@@ -605,6 +605,7 @@ public:
     }
 
 
+    // repair path breaks too ? 
     bool path_local_fragmentation(path* p, int mean_local_frag, vector<breakpoint*>& new_bps, int verbose = 0){
         int nbreak = gsl_ran_poisson(r, mean_local_frag);
         if(verbose > 1){
@@ -1175,11 +1176,12 @@ public:
     }
 
 
+
     //  below are functions related to output  
   
     // Follow format of RCK output
     // "chr1", "coord1", "strand1", "chr2", "coord2", "strand2",	"extra"
-    void write_sv(string fname){
+    void write_sv(string fname, int verbose = 0){
       // string fname = "sv_data.tsv"
       ofstream fout(fname);
       string header = "chr1\tcoord1\tstrand1\tchr2\tcoord2\tstrand2\textra\n";
@@ -1188,27 +1190,38 @@ public:
       for(auto adjm : g->adjacencies){
         adjacency* adj = adjm.second;
         if(adj->sv_type == NONE) continue;
-
-        breakpoint* j1 = g->breakpoints[adj->junc_id1];
-        breakpoint* j2 = g->breakpoints[adj->junc_id2];
-
-        breakpoint* jm = NULL; 
-        if(j1->chr == j2->chr && j1->pos > j2->pos){
-          jm = j1;
-          j1 = j2;
-          j2 = jm;       
-        }    
        
-        string type = "sv_type=" + get_sv_type_string(adj->sv_type);
-        string extra = type;
+        string extra = "sv_type=" + get_sv_type_string(adj->sv_type);
         // int cn_AA = 0;
         // int cn_AB = 0;
         // int cn_BA = 0;
         // int cn_BB = 0;
         // string cn = "cn={'c1':{'AA': " + to_string(cn_AA) + "'AB': "+ to_string(cn_AB) + ", 'BA':" + to_string(cn_BA) + ", 'BB':" + to_string(cn_BB) + "}";
         // type = type + ";" + cn;
-        string line = to_string(j1->chr + 1) + "\t" + to_string(j1->pos) + "\t" + get_side_string(j1->side) + "\t" + to_string(j2->chr + 1) + "\t" + to_string(j2->pos) + "\t" + get_side_string(j2->side) + "\t" + extra + "\n";
+        string line = g->get_sv_string(adj, extra);
         fout << line;
+      }
+
+      // if(verbose > 1) cout << "recomputing segment copy number for each cell to get consecutive regions" << endl;
+      // map<int, set<int>> bps_by_chr;
+      // g->get_bps_per_chr(bps_by_chr, verbose);
+      // g->calculate_segment_cn(bps_by_chr, verbose);
+      // for(int chr = 0; chr < NUM_CHR; chr++){
+      //   for(auto s: g->chr_segments[chr]){
+      //     if(s->cnA > 1 || s->cnB > 1){
+      //       string extra = "sv_type=DUP";
+      //       string line = to_string(s->chr + 1) + "\t" + to_string(s->start) + "\t" + "-" + "\t" + to_string(s->chr + 1) + "\t" + to_string(s->end) + "\t" + "+" + "\t" + extra + "\n";
+      //       fout << line;
+      //     }
+      //   }
+      // }
+
+      vector<chr_pos> dups;
+      g->get_dup_pseudo_adjacency(dups, verbose);
+      for(auto d: dups){
+          string extra = "sv_type=DUP";
+          string line = to_string(d.chr + 1) + "\t" + to_string(d.start) + "\t" + "-" + "\t" + to_string(d.chr + 1) + "\t" + to_string(d.end) + "\t" + "+" + "\t" + extra + "\n";
+          fout << line;       
       }
 
       fout.close();
@@ -1305,27 +1318,27 @@ public:
 
 
     // SVtype (character): type of SV, encoded as: DEL (deletion-like; +/-), DUP (duplication-like; -/+), h2hINV (head-to-head inversion; +/+), and t2tINV (tail-to-tail inversion; -/-).
-    void write_shatterseek(string fname_sv, string fname_cn){
+    void write_shatterseek(string fname_sv, string fname_cn, int verbose = 0){
       // "chrom1", "start1", "strand1", "chrom2", "end2", "strand2", "svclass"
       ofstream fout(fname_sv);
       string header = "chrom1\tstart1\tstrand1\tchrom2\tend2\tstrand2\tsvclass\n";
       fout << header;
       for(auto adjm : g->adjacencies){
         adjacency* adj = adjm.second;
-        int type = adj->sv_type;
-        if(type == NONE) continue;
-        breakpoint* j1 = g->breakpoints[adj->junc_id1];
-        breakpoint* j2 = g->breakpoints[adj->junc_id2];
-        breakpoint* jm = NULL; 
-        if(j1->chr == j2->chr && j1->pos > j2->pos){
-          jm = j1;
-          j1 = j2;
-          j2 = jm;        
-        }   
-        
-        string line = to_string(j1->chr + 1) + "\t" + to_string(j1->pos) + "\t" + get_side_string(j1->side) + "\t" + to_string(j2->chr + 1) + "\t" + to_string(j2->pos) + "\t" + get_side_string(j2->side) + "\t" + get_sv_type_string(type) + "\n";
+        if(adj->sv_type == NONE) continue;
+        string extra = get_sv_type_string(adj->sv_type);
+        string line = g->get_sv_string(adj, extra);
         fout << line;
       }
+
+      vector<chr_pos> dups;
+      g->get_dup_pseudo_adjacency(dups, verbose);
+      for(auto d: dups){
+          string extra = "DUP";
+          string line = to_string(d.chr + 1) + "\t" + to_string(d.start) + "\t" + "-" + "\t" + to_string(d.chr + 1) + "\t" + to_string(d.end) + "\t" + "+" + "\t" + extra + "\n";
+          fout << line;       
+      }
+
       fout.close();
 
       // "chromosome", "start", "end", "total_cn"

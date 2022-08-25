@@ -13,6 +13,14 @@ using namespace std;
 #include "util.hpp"
 
 
+struct chr_pos{
+  int chr;
+  int start;
+  int end;  
+  int cnA;
+  int cnB;
+};
+
 struct interval{
   int start;
   int end;
@@ -987,6 +995,34 @@ public:
   }
 
 
+  // check whether two intervals defined by j1 and j2 are overlapping
+  bool is_interval_overlap(breakpoint* j1, breakpoint* j2){
+    int i1_start = j1->pos;
+    int i1_end = breakpoints[j1->right_jid]->pos;
+    int i2_start = breakpoints[j2->left_jid]->pos;
+    int i2_end = j2->pos;
+    
+    int im = 0; 
+    if(i1_start > i1_end){
+      im = i1_start;
+      i1_start = i1_end;
+      i1_end = im;
+    } 
+    
+    if(i2_start > i2_end){
+      im = i2_start;
+      i2_start = i2_end;
+      i2_end = im;
+    }
+
+    if((i1_start < i2_end && i1_start > i2_start) || (i1_end < i2_end && i1_end > i2_start)){
+      return true;
+    }else{
+      return false;
+    }        
+  }
+
+
   // when j1 and j2 are on the same chromosome, need to ensure the coordinates of j1 is smaller than j2
   SV_type set_var_type(breakpoint* j1, breakpoint* j2, int verbose = 0) {
       SV_type sv_type = NONE;
@@ -1019,11 +1055,12 @@ public:
         assert(j2->left_jid >= 0);
         j1->left_jid = j2->id;
         j2->right_jid = j1->id;
-        // DUP (duplication-like; -/+)
-        sv_type = DUP;
+        // DUP (duplication-like; -/+), intervals also need to overlap to get duplicated regions
+        if(is_interval_overlap(j1, j2)){
+          sv_type = DUP;
+        }        
         if(j1->chr != j2->chr){
           sv_type = TRA;
-        }else{
         }
       }else{  //if(j1->side == TAIL && j2->side == TAIL)
         assert(j1->right_jid >= 0);
@@ -2043,6 +2080,7 @@ void get_unique_interval(int verbose = 0){
 }
 
 
+// where there are several intervals starting from the same position, some of them may be adjacent to the next one
 void get_merged_interval(int verbose = 0){
     cn_by_chr_hap_merged.clear();
 
@@ -2079,7 +2117,7 @@ void get_merged_interval(int verbose = 0){
     }
 
     if(verbose > 1){
-      cout << "Merged intervals" << endl;
+      cout << "\nMerged intervals" << endl;
       cout << "cell\tchr\thaplotype\tstart\tend\tJID_start\tJID_end\tCN\n";
       for(auto cnp : cn_by_chr_hap_merged){
         int chr = cnp.first.first;
@@ -2095,7 +2133,7 @@ void get_merged_interval(int verbose = 0){
   }
 
 
-  // To avoid segments completely lost in one cell not shown, add chr end when needed (TODOs)
+  // TODO: To avoid segments completely lost in one cell not shown, add chr end when needed 
   void get_bps_per_chr(map<int, set<int>>& bps_by_chr, int verbose = 0){
     get_merged_interval(verbose);
 
@@ -2130,7 +2168,15 @@ void get_merged_interval(int verbose = 0){
   // Compute allele-specific and total copy number
   void calculate_segment_cn(map<int, set<int>>& bps_by_chr, int verbose = 0){
     // verbose = 1;
-    assert(this->chr_segments.size() == 0);
+    assert(this->chr_segments.size() == 0); // only compute once for a cell
+    // if(this->chr_segments.size() > 0){
+    //   for(auto sg : chr_segments){
+    //     for(auto s : sg.second){
+    //       delete s;
+    //     }     
+    //   }
+    //   chr_segments.clear();
+    // }
     int sid = 0;
 
     // split the regions according to the breakpoints
@@ -2196,4 +2242,69 @@ void get_merged_interval(int verbose = 0){
       }
     }
   }
+
+
+  string get_sv_string(adjacency* adj, string extra){
+      assert(adj->sv_type != NONE);
+
+      breakpoint* j1 = breakpoints[adj->junc_id1];
+      breakpoint* j2 = breakpoints[adj->junc_id2];
+
+      breakpoint* jm = NULL; 
+      if(j1->chr == j2->chr && j1->pos > j2->pos){
+        jm = j1;
+        j1 = j2;
+        j2 = jm;       
+      } 
+
+      string line = to_string(j1->chr + 1) + "\t" + to_string(j1->pos) + "\t" + get_side_string(j1->side) + "\t" + to_string(j2->chr + 1) + "\t" + to_string(j2->pos) + "\t" + get_side_string(j2->side) + "\t" + extra + "\n";  
+
+      return line;   
+  }
+
+
+  // Set additional DUP-like patterns based on copy number
+  void get_dup_pseudo_adjacency(vector<chr_pos>& merged_dups_pos, int verbose = 0){
+      assert(chr_segments.size() > 0);
+      assert(merged_dups_pos.size() == 0);
+
+      if(verbose > 1) cout << "Set additional DUP-like patterns based on copy number" << endl;
+      vector<chr_pos> dups_pos;      
+      for(auto segs : chr_segments){
+        for(auto s: segs.second){
+          if(verbose > 1) s->print();
+          if(s->cnA > 1 || s->cnB > 1){
+            chr_pos pos{s->chr, s->start, s->end, s->cnA, s->cnB};
+            dups_pos.push_back(pos);
+          }
+        }
+      } 
+      // cout << dups_pos.size() << endl;
+      if(dups_pos.size() == 0) return;
+
+      // merge consecutive positions with the same copy number
+      chr_pos intl_prev = dups_pos[0];
+      merged_dups_pos.push_back(intl_prev);
+      if(verbose > 1) cout << "interval " << 1 << "\t" << intl_prev.chr << "\t" << intl_prev.start << "\t" << intl_prev.end << "\t" << intl_prev.cnA << "\t" << intl_prev.cnB << endl;
+
+      bool merged = false;
+      // cout << intls.size() << endl;
+      for(int i = 1; i < dups_pos.size(); i++){
+        chr_pos intl_curr = dups_pos[i];
+        if(verbose > 1) cout << "interval " << i + 1 << "\t" << intl_curr.chr << "\t" << intl_curr.start << "\t" << intl_curr.end << "\t" << intl_curr.cnA << "\t" << intl_curr.cnB << endl;
+
+        if(intl_prev.chr == intl_curr.chr && intl_prev.end == intl_curr.start && intl_prev.cnA == intl_curr.cnA  && intl_prev.cnB == intl_curr.cnB){
+          chr_pos intl_merged{intl_prev.chr, intl_prev.start, intl_curr.end, intl_prev.cnA, intl_prev.cnB};
+          if(verbose > 1) cout << "interval after merging with previous one\t" << intl_merged.chr <<intl_merged.start << "\t" << intl_merged.end << "\t" << intl_merged.cnA << "\t" << intl_merged.cnB << endl;
+          merged_dups_pos.pop_back();
+          merged_dups_pos.push_back(intl_merged);
+          intl_prev = intl_merged;
+        }else{
+          if(verbose > 1) cout << "interval without merging with previous one\t" << intl_curr.chr << "\t" << intl_curr.start << "\t" << intl_curr.end << "\t" << intl_curr.cnA << "\t" << "\t" << intl_curr.cnB << endl;
+          merged_dups_pos.push_back(intl_curr);
+          intl_prev = intl_curr;
+        }
+      }     
+    }
+
 };

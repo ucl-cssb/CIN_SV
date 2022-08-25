@@ -178,20 +178,16 @@ void get_vals_from_str(vector<T>& vals, string str_vals, int num = 0){
 // Read reference genome informaton (chr start end centromere_pos); there must be an empty line in the end
 // chr1	0	2300000	p36.33	gneg
 void read_genome_info(const string& filename, vector<int>& chr_lengths, vector<int>& arm_boundaries, vector<int>& centromere_starts, vector<int>& centromere_ends, vector<int>& telomere_ends1, vector<int>& telomere_ends2, int verbose = 0){
-  verbose = 0;
   if(verbose) cout << "\nReading reference genome information from " << filename << endl;
 
-  ifstream infile(filename.c_str());
-
+  ifstream infile(filename);
   if(!infile.is_open()){
     std::cerr << "Error: open of input data unsuccessful: " << filename << std::endl;
     exit(1);
   }
 
   std::string line;
-
   getline(infile, line); // skip the first header line
-
   while(!getline(infile, line).eof()){
     if(verbose) cout << line << endl;
     if(line.empty()){
@@ -228,6 +224,7 @@ void read_genome_info(const string& filename, vector<int>& chr_lengths, vector<i
       cout << i + 1 << "\t" << chr_lengths[i] << "\t" << arm_boundaries[i] << endl;
     }
   }
+
 }
 
 // read intervals, to facilitate overlap computation
@@ -260,7 +257,7 @@ void get_chr_prob(int type, vector<int>& selected_chr){
     selected_chr.push_back(0);
   }
 
-  double p0 = 2.0 / 3.0;
+  double p0 = 2.0 / 3.0;  // ? 
   double p1 = p0 / nb;      // p1 for selected chromosome
   double p2 = (1 - p0) / (NUM_CHR - nb);
   for(int i = 0; i < NUM_CHR; i++){
@@ -268,6 +265,35 @@ void get_chr_prob(int type, vector<int>& selected_chr){
   }
   for(int i = 0; i < selected_chr.size(); i++){
     CHR_PROBS[i] = p1;
+  }
+}
+
+
+void get_chr_prob_from_file(const string& filename, int verbose = 0){
+  if(verbose) cout << "\nReading chromosome probability from " << filename << endl;
+
+  ifstream infile(filename);
+  if(!infile.is_open()){
+    std::cerr << "Error: open of input data unsuccessful: " << filename << std::endl;
+    exit(1);
+  }
+
+  std::string line;
+  int i = 0;
+  while(!getline(infile, line).eof()){
+    if(verbose) cout << line << endl;
+    if(line.empty()){
+      continue;
+    }
+    if(i >= NUM_CHR) break;   
+    std::vector<std::string> split;
+    std::string buf;
+    stringstream ss(line);
+    while (ss >> buf) split.push_back(buf);
+    assert(split.size() == 1);
+
+    double len = atof(split[0].c_str());
+    CHR_PROBS[i++] = len;
   }
 }
 
