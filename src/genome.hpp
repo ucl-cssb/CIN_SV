@@ -13,7 +13,7 @@ using namespace std;
 #include "util.hpp"
 
 
-struct chr_pos{
+struct pos_cn{
   int chr;
   int start;
   int end;  
@@ -64,7 +64,6 @@ public:
   int cnA;
   int cnB;
   // int type;  // telomere or not. 0: normal, 1: telomere, 2: centromere
-  // bool is_inverted;
 
   segment(int id, int cell_ID, int chr, int start, int end, int cnA, int cnB){
     this->id = id;
@@ -128,7 +127,6 @@ public:
 // a breakpoint in the chromosome, introduced by a DSB, haplotype-specific,
 // node in the genome graph
 // one instance for each copy
-// TODO: rename to be more accurate breakpoint
 class breakpoint{
 public:
   int id;   // keep increasing when new breakpoints are added
@@ -836,7 +834,6 @@ public:
     // a new breakpoint will generate two new segment j1, j2
     // (j1, j2) still unconnected, need to be repaired
     bool is_repaired = false;
-
     // two breakpoints at the same position are generated, with different sides (orientation)
     breakpoint* j1 = new breakpoint(cell_ID, jid++, chr, bp, HEAD, haplotype, is_end, is_repaired);
     breakpoint* j2 = new breakpoint(cell_ID, jid++, chr, bp, TAIL, haplotype, is_end, is_repaired);
@@ -1032,9 +1029,10 @@ public:
         assert(j2->right_jid >= 0);
         j1->right_jid = j2->id;
         j2->left_jid = j1->id;
-        // DEL (deletion-like; +/-)
-        sv_type = DEL;
+        // DEL (deletion-like; +/-), intervals also need to have CN < 2, updated later
+        sv_type = DELLIKE;
         // interval in the reference genome is lost
+        // || j1->haplotype != j2->haplotype, ignore haplotype as it is hard to determine from real data
         if(j1->chr != j2->chr){
           sv_type = TRA;
         }else{
@@ -1055,10 +1053,10 @@ public:
         assert(j2->left_jid >= 0);
         j1->left_jid = j2->id;
         j2->right_jid = j1->id;
-        // DUP (duplication-like; -/+), intervals also need to overlap to get duplicated regions
-        if(is_interval_overlap(j1, j2)){
-          sv_type = DUP;
-        }        
+        // DUP (tandom duplication-like; -/+), intervals also need to have CN > 2, updated later
+        // if(is_interval_overlap(j1, j2)){
+        sv_type = DUPLIKE;
+        // }        
         if(j1->chr != j2->chr){
           sv_type = TRA;
         }
@@ -1085,15 +1083,6 @@ public:
     assert(n_unrepaired >= 0);
     // store segments without telomeres
     int aid = adjacencies.rbegin()->first + 1;
-
-    // connect segments randomly to get variant adjacencies (repair DSBs)
-    // only breakpoints with missing connections need to be repaired
-    for(auto jm : breakpoints){
-      breakpoint* j = jm.second;
-      if(!j->is_repaired){
-        junc2repair.push_back(j);
-      }
-    }
 
     if(verbose > 1){
       cout << "#breakpoints to repair: " << junc2repair.size() << endl;
@@ -1197,6 +1186,10 @@ public:
       for(auto a : adjacencies){
         (a.second)->print_interval(breakpoints);
       }
+      cout << junc2repair.size() << " breakpoints unrepaired" << endl;
+      for(auto j : junc2repair){
+        j->print();
+      }      
     }
   }
 
@@ -1423,7 +1416,7 @@ public:
     if(find(ids.begin(), ids.end(), bp->id) != ids.end()){
       cout << "breakpoint already included!" << endl;
       bp->print();
-      exit(1);
+      exit(FAIL);
     }
   }
 
@@ -1437,7 +1430,7 @@ public:
     if(find(ids.begin(), ids.end(), adj->id) != ids.end()){
       cout << "adjacency already included!" << endl;
       adj->print();
-      exit(1);
+      exit(FAIL);
     }
   }
 
@@ -1451,7 +1444,7 @@ public:
     if(find(pids.begin(), pids.end(), p->id) != pids.end()){
       cout << "path already included!" << endl;
       p->print();
-      exit(1);
+      exit(FAIL);
     }
   }
 
@@ -1467,7 +1460,7 @@ public:
       cout << "Incorrect number of nodes in path " << p->id + 1 << endl;
       p->print();
       write_path(p, cout);
-      exit(1);
+      exit(FAIL);
     }  
 
     if(!p->is_circle){
@@ -1475,14 +1468,14 @@ public:
         cout << "Incorrect number of edges in linear path " << p->id + 1 << endl;
         p->print();
         write_path(p, cout);
-        exit(1);        
+        exit(FAIL);        
       }  
     }else{
        if(p->nodes.size() != p->edges.size()){
         cout << "Incorrect number of edges in circular path " << p->id + 1 << endl;
         p->print();
         write_path(p, cout);
-        exit(1);
+        exit(FAIL);
       }
     }  
   }
@@ -1717,7 +1710,7 @@ void check_derived_genome(){
       if(b->path_ID < 0){
         cout << "\nwrong path connection with missing breakpoint!" << endl;
         b->print();
-        exit(1);
+        exit(FAIL);
       }
     }
 
@@ -1726,7 +1719,7 @@ void check_derived_genome(){
       if(a->path_ID < 0){
         cout << "\nwrong path connection  with missing adjacency!" << endl;
         a->print();
-        exit(1);
+        exit(FAIL);
       }
     }
 }
@@ -1753,7 +1746,7 @@ void update_end_junc(int last_jid_orig, int last_jid) {
     cout << "Weird breakpoint neighbours!" << endl;
     breakpoints[last_jid_orig]->print();
     breakpoints[last_jid]->print();
-    exit(1);
+    exit(FAIL);
   }
   
   assert(breakpoints[last_jid_orig]->right_jid == breakpoints[last_jid]->right_jid ||
@@ -1928,7 +1921,7 @@ void duplicate_path_fusion(path& p, int verbose = 0){
       cout << "Weird breakpoint neighbours after updating!" << endl;
       breakpoints[last_jid_orig]->print();
       breakpoints[last_jid]->print();
-      exit(1);
+      exit(FAIL);
     }
 
     assert(breakpoints[last_jid_orig]->left_jid >= 0 && breakpoints[last_jid_orig]->right_jid >= 0);
@@ -2109,7 +2102,7 @@ void get_merged_interval(int verbose = 0){
           cn_by_chr_hap_merged[cnp.first].push_back(intl_merged);
           intl_prev = intl_merged;
         }else{
-          if(verbose > 1) cout << "interval without merging with previous one\t" << intl_curr.start << "\t" << intl_curr.end << "\t" << intl_curr.cn << endl;
+          if(verbose > 1) cout << "\t" << intl_curr.start << "\t" << intl_curr.end << "\t" << intl_curr.cn << endl;
           cn_by_chr_hap_merged[cnp.first].push_back(intl_curr);
           intl_prev = intl_curr;
         }
@@ -2263,48 +2256,65 @@ void get_merged_interval(int verbose = 0){
   }
 
 
-  // Set additional DUP-like patterns based on copy number
-  void get_dup_pseudo_adjacency(vector<chr_pos>& merged_dups_pos, int verbose = 0){
-      assert(chr_segments.size() > 0);
-      assert(merged_dups_pos.size() == 0);
-
-      if(verbose > 1) cout << "Set additional DUP-like patterns based on copy number" << endl;
-      vector<chr_pos> dups_pos;      
-      for(auto segs : chr_segments){
-        for(auto s: segs.second){
-          if(verbose > 1) s->print();
-          if(s->cnA > 1 || s->cnB > 1){
-            chr_pos pos{s->chr, s->start, s->end, s->cnA, s->cnB};
-            dups_pos.push_back(pos);
-          }
-        }
-      } 
-      // cout << dups_pos.size() << endl;
-      if(dups_pos.size() == 0) return;
-
-      // merge consecutive positions with the same copy number
-      chr_pos intl_prev = dups_pos[0];
-      merged_dups_pos.push_back(intl_prev);
+  // merge consecutive positions with the same copy number at both haplotypes
+  void get_merged_svs(const vector<pos_cn>& orig_pos, vector<pos_cn>& merged_pos, int verbose = 0){      
+      pos_cn intl_prev = orig_pos[0];
+      merged_pos.push_back(intl_prev);
       if(verbose > 1) cout << "interval " << 1 << "\t" << intl_prev.chr << "\t" << intl_prev.start << "\t" << intl_prev.end << "\t" << intl_prev.cnA << "\t" << intl_prev.cnB << endl;
 
       bool merged = false;
       // cout << intls.size() << endl;
-      for(int i = 1; i < dups_pos.size(); i++){
-        chr_pos intl_curr = dups_pos[i];
+      for(int i = 1; i < orig_pos.size(); i++){
+        pos_cn intl_curr = orig_pos[i];
         if(verbose > 1) cout << "interval " << i + 1 << "\t" << intl_curr.chr << "\t" << intl_curr.start << "\t" << intl_curr.end << "\t" << intl_curr.cnA << "\t" << intl_curr.cnB << endl;
 
-        if(intl_prev.chr == intl_curr.chr && intl_prev.end == intl_curr.start && intl_prev.cnA == intl_curr.cnA  && intl_prev.cnB == intl_curr.cnB){
-          chr_pos intl_merged{intl_prev.chr, intl_prev.start, intl_curr.end, intl_prev.cnA, intl_prev.cnB};
+        // if(intl_prev.chr == intl_curr.chr && intl_prev.end == intl_curr.start && intl_prev.cnA == intl_curr.cnA  && intl_prev.cnB == intl_curr.cnB)
+        // only check total CN
+        if(intl_prev.chr == intl_curr.chr && intl_prev.end == intl_curr.start && intl_prev.cnA + intl_prev.cnB == intl_curr.cnA + intl_curr.cnB){
+          pos_cn intl_merged{intl_prev.chr, intl_prev.start, intl_curr.end, intl_prev.cnA, intl_prev.cnB};
           if(verbose > 1) cout << "interval after merging with previous one\t" << intl_merged.chr <<intl_merged.start << "\t" << intl_merged.end << "\t" << intl_merged.cnA << "\t" << intl_merged.cnB << endl;
-          merged_dups_pos.pop_back();
-          merged_dups_pos.push_back(intl_merged);
+          merged_pos.pop_back();
+          merged_pos.push_back(intl_merged);
           intl_prev = intl_merged;
         }else{
           if(verbose > 1) cout << "interval without merging with previous one\t" << intl_curr.chr << "\t" << intl_curr.start << "\t" << intl_curr.end << "\t" << intl_curr.cnA << "\t" << "\t" << intl_curr.cnB << endl;
-          merged_dups_pos.push_back(intl_curr);
+          merged_pos.push_back(intl_curr);
           intl_prev = intl_curr;
         }
       }     
+  }
+
+  // Get duplicated or deleted region to set DUP/DEL-like patterns based on copy number, which may be caused during mitosis as a result of inbalanced distribution
+  void get_pseudo_adjacency(vector<pos_cn>& merged_dups_pos, vector<pos_cn>& merged_dels_pos, int verbose = 0){
+      assert(chr_segments.size() > 0);
+      assert(merged_dups_pos.size() == 0);
+      assert(merged_dels_pos.size() == 0);
+
+      if(verbose > 1) cout << "Set additional DUP/DEL-like patterns based on copy number" << endl;
+      vector<pos_cn> dups_pos; 
+      vector<pos_cn> dels_pos;   
+      // original sets of positions may be more fragmented due to global breakpoints across cells   
+      for(auto segs : chr_segments){
+        for(auto s: segs.second){
+          if(verbose > 1) s->print();
+          pos_cn pos{s->chr, s->start, s->end, s->cnA, s->cnB};
+          int tcn = s->cnA + s->cnB;
+          if(tcn > 2){          
+            dups_pos.push_back(pos);
+          }else if(tcn < 2){
+            dels_pos.push_back(pos);
+          }else{
+
+          }          
+        }
+      } 
+      // cout << dups_pos.size() << endl;
+      if(dups_pos.size() > 0){
+        get_merged_svs(dups_pos, merged_dups_pos, verbose);
+      }
+      if(dels_pos.size() > 0){
+        get_merged_svs(dels_pos, merged_dels_pos, verbose);
+      }      
     }
 
 };

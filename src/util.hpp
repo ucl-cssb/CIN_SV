@@ -32,6 +32,8 @@ typedef map<pair<int, int>, int> pcn;   // copy number at a position
 typedef map<pair<int, int>, double> dpcn;   // copy number at a position
 
 
+const int FAIL = 1;
+
 const int NUM_CHR = 22;
 const int NORM_PLOIDY = 2;
 const int NUM_LOC = 5000;
@@ -52,13 +54,14 @@ vector<double> CHR_PROBS_vec(NUM_CHR, 1.0 / NUM_CHR);
 // use pointer to be compatible with gsl
 double* CHR_PROBS = &CHR_PROBS_vec[0];
 
-const int NUM_SVTYPE = 6;
+const int NUM_SVTYPE = 8;
+// DELLIKE: +/-, DUPLIKE: -/+, same orientation as DEL/DUP, but copy number may not change
+enum SV_type{NONE, DEL, DUP, H2HINV, T2TINV, TRA, DELLIKE, DUPLIKE}; // only for variant adjacency, TRA: intra-chromosomal
 
 enum SStat_type{ALL};
 enum Growth_type{ONLY_BIRTH, CHANGE_BIRTH, CHANGE_DEATH, CHANGE_BOTH};
 enum Telo_type{NONTEL, PTEL, QTEL, COMPLETE};
 enum Adj_type{INTERVAL, REF, VAR};   // 0: interval, 1: reference, 2: variant
-enum SV_type{NONE, DEL, DUP, H2HINV, T2TINV, TRA};  // only for variant adjacency, TRA: intra-chromosomal
 enum Junc_type{HEAD, TAIL};
 
 gsl_rng * r;
@@ -183,7 +186,7 @@ void read_genome_info(const string& filename, vector<int>& chr_lengths, vector<i
   ifstream infile(filename);
   if(!infile.is_open()){
     std::cerr << "Error: open of input data unsuccessful: " << filename << std::endl;
-    exit(1);
+    exit(FAIL);
   }
 
   std::string line;
@@ -275,7 +278,7 @@ void get_chr_prob_from_file(const string& filename, int verbose = 0){
   ifstream infile(filename);
   if(!infile.is_open()){
     std::cerr << "Error: open of input data unsuccessful: " << filename << std::endl;
-    exit(1);
+    exit(FAIL);
   }
 
   std::string line;
@@ -345,6 +348,8 @@ string get_sv_type_string(int type){
   switch (type) {
     case DUP: type_str = "DUP"; break;
     case DEL: type_str = "DEL"; break;
+    case DUPLIKE: type_str = "DUPLIKE"; break;
+    case DELLIKE: type_str = "DELLIKE"; break;    
     case TRA: type_str = "TRA"; break;
     case H2HINV: type_str = "H2HINV"; break;
     case T2TINV: type_str = "T2TINV"; break;

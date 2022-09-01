@@ -26,6 +26,7 @@ int main(int argc, char const *argv[]){
     string fchr_prob;
     string fchr;
     int mean_local_frag;  // mean number of breakpoints introduced by local fragmentation during mitosis
+    double frac_unrepaired_local;
 
     double leap_size;
 
@@ -73,10 +74,11 @@ int main(int argc, char const *argv[]){
       ("min_dsb", po::value<int>(&min_dsb)->default_value(0), "minimal number of double strand breaks")
       ("max_dsb", po::value<int>(&max_dsb)->default_value(40), "maximal number of double strand breaks")
       ("n_dsb", po::value<int>(&n_dsb)->default_value(20), "maximal number of double strand breaks")
-      ("frac_unrepaired", po::value<double>(&frac_unrepaired)->default_value(0.1), "number of unrepaired double strand breaks")
+      ("frac_unrepaired", po::value<double>(&frac_unrepaired)->default_value(0), "number of unrepaired double strand breaks, default: all breaks are repaired")
       ("mean_local_frag", po::value<int>(&mean_local_frag)->default_value(0), "mean number of breakpoints introduced by local fragmentation during mitosis")
+      ("frac_unrepaired_local", po::value<double>(&frac_unrepaired_local)->default_value(1), "number of unrepaired double strand breaks in local fragmentation during mitosis, default: all breaks are not repaired")
       ("chr_prob", po::value<int>(&chr_prob)->default_value(0), "the probability of double strand breaks across chromosomes. 0: random; 1: biased; 2: fixed")
-      ("circular_prob", po::value<double>(&circular_prob)->default_value(0.5), "the probability of a frament without centromere and telomeres forming ecDNA")
+      ("circular_prob", po::value<double>(&circular_prob)->default_value(0), "the probability of a frament without centromere and telomeres forming circular DNA (ecDNA)")
       // ("target_chrs", po::value<string>(&target_chrs)->default_value(""), "biased chromosomes to introduce breaks, total number followed by ID of each chromosome")
       ("fchr_prob", po::value<string>(&fchr_prob)->default_value(""), "file containing the probability of breaks on each chromosome")
 
@@ -85,7 +87,7 @@ int main(int argc, char const *argv[]){
 
       ("odir,o", po::value<string>(&outdir)->required()->default_value("./"), "output directory")
        ;
-
+ 
     po::options_description optional("Optional parameters");
     optional.add_options()
       // input files which specifies #sampled cells and CNA informaton
@@ -170,7 +172,7 @@ int main(int argc, char const *argv[]){
     Clone* s = new Clone(1, 0);
     
     if(verbose > 0) cout << "Start cell growth " << endl;
-    s->grow_with_dsb(start_cell, start_model, n_cell, mean_local_frag, circular_prob, track_all, verbose);
+    s->grow_with_dsb(start_cell, start_model, n_cell, mean_local_frag, frac_unrepaired_local, circular_prob, track_all, verbose);
     if(verbose > 0) cout << "\nFinish cell growth " << endl;
 
     vector<Cell_ptr> final_cells;
@@ -181,7 +183,7 @@ int main(int argc, char const *argv[]){
       final_cells = s->curr_cells;
     }
 
-    if(verbose > 0) cout << "\nComputing breakpoints on each chromosome across all cells " << endl;
+    if(verbose > 0) cout << "\nComputing breakpoints on each chromosome across all cells for more intuitive comparison and visualization" << endl;
     // get breakpoints across cells first
     map<int, set<int>> bps_by_chr;
     for(auto cell : final_cells){
@@ -211,18 +213,12 @@ int main(int argc, char const *argv[]){
       // merge segments with the same CN by haplotype
       cell->g->calculate_segment_cn(bps_by_chr, verbose);
 
-      // compute and output summary statistics for inference
-      cell->get_summary_stats();
+      vector<pos_cn> dups;
+      vector<pos_cn> dels;
+      cell->g->get_pseudo_adjacency(dups, dels, verbose);
 
-      // int nSV = cell->n_dup + cell->n_del + cell->n_h2h + cell->n_t2t;
-      cout << cell->div_occur << "\t" << cell->cell_ID;
-      //  << "\t" << 0 << "\t" << cell->bp_unique.size() << "\t" << nSV << endl;
-      for(int i = 0; i < NUM_CHR; i++){
-        int nSV_chr = cell->chr_type_num[i][DEL] + cell->chr_type_num[i][DUP] + cell->chr_type_num[i][H2HINV] + cell->chr_type_num[i][T2TINV];
-        // cout << cell->div_occur << "\t" << cell->cell_ID << "\t" << i+1 << "\t" << cell->chr_n_bp[i] << "\t" << nSV_chr << endl;
-        cout << "\t" << cell->chr_bp_unique[i].size() << "\t" << nSV_chr << "\t" << cell->chr_n_osc2[i] << "\t" << cell->chr_n_osc3[i];
-      }
-      cout << endl;
+      // compute and print summary statistics
+      cell->print_total_summary(dups, dels, verbose);
 
       if(write_sumstats){
         if(verbose > 0) cout << "\nWrite output for summary statistics" << endl;
@@ -239,7 +235,7 @@ int main(int argc, char const *argv[]){
         string fname_cn = outdir +"/" + "cn_data_c" + midfix + filetype;
         cell->write_cnv(fname_cn);        
         string fname_sv = outdir +"/" + "sv_data_c" + midfix + filetype;
-        cell->write_sv(fname_sv, verbose);
+        cell->write_sv(fname_sv, dups, dels, verbose);
       }
 
       // write CN and SV data to tsv - for ShatterSeek
@@ -248,7 +244,7 @@ int main(int argc, char const *argv[]){
         string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
         string fname_sv_ss = outdir +"/" + "SVData_c" + midfix + filetype;
         string fname_cn_ss = outdir +"/" + "CNData_c" + midfix + filetype;
-        cell->write_shatterseek(fname_sv_ss, fname_cn_ss, verbose);
+        cell->write_shatterseek(fname_sv_ss, fname_cn_ss, dups, dels, verbose);
       }
 
       if(write_genome){

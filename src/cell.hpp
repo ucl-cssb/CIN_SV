@@ -147,7 +147,7 @@ public:
       delete g;
     }
 
-    Cell() {
+    Cell(){
         cell_ID = 0;
         parent_ID = 0;
         clone_ID = 0;
@@ -163,7 +163,7 @@ public:
     }
 
 
-    Cell(int cell_ID, int parent_ID, double time_occur) {
+    Cell(int cell_ID, int parent_ID, double time_occur){
         this->cell_ID = cell_ID;
         this->parent_ID = parent_ID;
 
@@ -577,7 +577,7 @@ public:
 
 
     // construct a new path starting from a specific breakpoint
-    void get_path_from_bp(path* p, breakpoint* js, double circular_prob, int verbose = 0) {
+    void get_path_from_bp(path* p, breakpoint* js, double frac_unrepaired, double circular_prob, int verbose = 0) {
         js->path_ID = p->id;
         p->nodes.push_back(js->id);
         if(verbose > 1){
@@ -588,14 +588,15 @@ public:
         g->get_connected_breakpoint(js, p, g->adjacencies, false, verbose);
 
         if(verbose > 1) {
-          cout << "setting path type" << endl;
-        }
+          cout << "setting circular path type at probability " << circular_prob << endl;
+        }          
         double u2 = runiform(r, 0, 1);
         if(u2 < circular_prob){
             g->set_path_type(p, true, verbose);
         }else{
             g->set_path_type(p, false, verbose);
-        }        
+        } 
+
         assert(p->n_centromere <= 1);
 
         if(verbose > 1){
@@ -604,18 +605,21 @@ public:
         }
     }
 
-
-    // repair path breaks too ? 
-    bool path_local_fragmentation(path* p, int mean_local_frag, vector<breakpoint*>& new_bps, int verbose = 0){
-        int nbreak = gsl_ran_poisson(r, mean_local_frag);
+ 
+    // new_bps: new breakpoints introduced during fragmentation after repairing
+    // for simplification, assume all breakpoints are not repaired in mitosis
+    bool path_local_fragmentation(path* p, int mean_local_frag, double frac_unrepaired, vector<breakpoint*>& new_bps, int verbose = 0){
+        int nbreak = gsl_ran_poisson(r, mean_local_frag);   // expected number of breaks
+        int nbreak_succ = 0; // real number of breaks
         if(verbose > 1){
-          cout << "Fragmentize path " << p->id + 1 << endl;
+          cout << "Fragmentize path " << p->id + 1 << " in cell " << cell_ID << endl;
           p->print();
         }
         // generate DSBs on the selected path, form nbreak+1 new paths
-        int bcount = 0;
+        int bcount = 0;  
         int ntrial = 0;
         int nfail = 0;
+        vector<breakpoint*> local_bps;
         int jid = g->breakpoints.rbegin()->first + 1;
         int aid = g->adjacencies.rbegin()->first + 1;
         while(bcount != nbreak){
@@ -669,8 +673,14 @@ public:
                   continue;
                 }
 
+                nbreak_succ++;
+
                 // remove old edges, add new edges
                 g->add_new_breakpoint(jid, aid, chr, bp, haplotype, left_jid, right_jid, false, verbose);
+
+                // record both breakpoints for repairing
+                local_bps.push_back(g->breakpoints[jid - 2]);
+                local_bps.push_back(g->breakpoints[jid - 1]);
 
                 // always add the right (based on the direction of the edge) most breakpoint to avoid duplicated path
                 if(is_inverted){
@@ -705,6 +715,16 @@ public:
           }
         }
 
+        int n_unrepaired = round(nbreak_succ * frac_unrepaired);
+        if(n_unrepaired < nbreak_succ){  // some got repaired
+            if(verbose > 1) {
+              cout << "repair " << nbreak_succ - n_unrepaired << " breaks duing local fragmentation\n"; 
+            }
+            g->repair_dsb(n_unrepaired, local_bps, verbose);
+            // TOFIX: remove another breakpoint at the end of a path later if repairing is needed
+            new_bps = local_bps;
+        }
+        
         if(nfail == nbreak){  // all trials to add breakpoints failed
           return false;
         }else{
@@ -713,10 +733,10 @@ public:
       }
 
 
-    void get_path_from_bp(int& pid, breakpoint* js, int mean_local_frag, double circular_prob, Cell_ptr dcell1, Cell_ptr dcell2, int verbose = 0){
+    void get_path_from_bp(int& pid, breakpoint* js, int mean_local_frag, double frac_unrepaired, double circular_prob, Cell_ptr dcell1, Cell_ptr dcell2, int verbose = 0){
         //  each path will have a unique ID
         path* p = new path(++pid, this->cell_ID, COMPLETE);
-        get_path_from_bp(p, js, circular_prob, verbose);
+        get_path_from_bp(p, js, frac_unrepaired, circular_prob, verbose);
 
         if(mean_local_frag == 0){
           if(verbose > 1){
@@ -732,9 +752,9 @@ public:
               if(verbose > 1){
                 cout << "\nThe new path has local fragmentation" << endl;
               }
-              // p will be broken into many new paths
+              // p will be broken into new paths
               vector<breakpoint*> new_bps;
-              bool splited = path_local_fragmentation(p, mean_local_frag, new_bps, verbose);
+              bool splited = path_local_fragmentation(p, mean_local_frag, frac_unrepaired, new_bps, verbose);
               if(!splited){
                 g->validate_path(p);
                 g->paths[p->id] = p;
@@ -751,7 +771,7 @@ public:
                 }  
 
                 path* p2 = new path(++pid, this->cell_ID, COMPLETE);              
-                get_path_from_bp(p2, njs, circular_prob, verbose);
+                get_path_from_bp(p2, njs, frac_unrepaired, circular_prob, verbose);
 
                 if(verbose > 1){
                   cout << "Path " << p2->id + 1 << " from breakpoint " << njs->id << endl;               
@@ -774,7 +794,7 @@ public:
     // choose breakpoint location so that each path contains one centromere, introduce new breakpoints and form connections
     // assume the path has 2 telomeres at the ends
     // p2split will be split into n_centromere paths, which are distributed randomly
-    void segregate_polycentric(path* p2split, Cell_ptr dcell1, Cell_ptr dcell2, int& pid, int mean_local_frag, double circular_prob, int verbose = 0){
+    void segregate_polycentric(path* p2split, Cell_ptr dcell1, Cell_ptr dcell2, int& pid, int mean_local_frag, double frac_unrepaired, double circular_prob, int verbose = 0){
       // verbose = 2;
       if(verbose > 0){
         cout << "\nbreaking a complex path with >1 centromeres" << endl;
@@ -833,7 +853,7 @@ public:
           cout << "\nspliting path starting from breakpoint " << jid << endl;
           g->breakpoints[jid]->print();
         }
-        get_path_from_bp(pid, g->breakpoints[jid], mean_local_frag, circular_prob, dcell1, dcell2, verbose);
+        get_path_from_bp(pid, g->breakpoints[jid], mean_local_frag, frac_unrepaired, circular_prob, dcell1, dcell2, verbose);
       }
 
     }
@@ -848,6 +868,14 @@ public:
       int n_torepair = n_dsb - n_unrepaired;
       if(verbose > 0) cout << "\nRepairing " << n_torepair << " DSBs" << endl;
       vector<breakpoint*> junc2repair;
+      // connect segments randomly to get variant adjacencies (repair DSBs)
+      // only breakpoints with missing connections need to be repaired
+      for(auto jm : g->breakpoints){
+        breakpoint* j = jm.second;
+        if(!j->is_repaired){
+          junc2repair.push_back(j);
+        }
+      }
       if(n_torepair > 0){
         g->repair_dsb(n_unrepaired, junc2repair, verbose);
       }
@@ -948,7 +976,7 @@ public:
 
 
     // randomly distribute between daughter cells, depend on #centromeres
-    void mitosis(Cell_ptr dcell1, Cell_ptr dcell2, int&  n_complex_path, int& n_path_break, int mean_local_frag, double circular_prob, int verbose = 0){
+    void mitosis(Cell_ptr dcell1, Cell_ptr dcell2, int&  n_complex_path, int& n_path_break, int mean_local_frag, double frac_unrepaired, double circular_prob, int verbose = 0){
       // verbose = 2;
       if(verbose > 1){
         cout << g->paths.size() << " paths before split (may include duplicated path distributed to daughter cells)" << endl;
@@ -970,7 +998,7 @@ public:
         if((p->nodes.size() % 2 != 0)){
           cout << "path node size is not even!" << endl;
           p->print();
-          exit(1);
+          exit(FAIL);
         }
         if(p->n_centromere == 1){  // balanced distribution, may be circular
           // keep the sibling path, distribution to different cells
@@ -997,7 +1025,7 @@ public:
           if(verbose > 1) cout << "\ncomplex distribution of path " << p->id + 1 << endl;
           n_complex_path += 1;
           n_path_break += p->n_centromere - 1; 
-          segregate_polycentric(p, dcell1, dcell2, max_pID, mean_local_frag, circular_prob, verbose);
+          segregate_polycentric(p, dcell1, dcell2, max_pID, mean_local_frag, frac_unrepaired, circular_prob, verbose);
           if(verbose > 1) cout << "\nFinish complex splitting\n" << endl;
         }
       }
@@ -1015,7 +1043,8 @@ public:
 
     // assume segments have been generated
     // count number of oscillating CNs by chromosome
-    void get_oscillating_CN(int verbose = 0){       
+    void get_oscillating_CN(int verbose = 0){  
+      if(verbose > 1) cout << "count number of oscillating CNs by chromosome\n";     
       for(int chr = 0; chr < NUM_CHR; chr++){
         vector<int> tcns;
         vector<int> tdiff;
@@ -1062,8 +1091,27 @@ public:
     }
 
 
+   bool is_copy_changed(int chr, int start, int end, const vector<pos_cn>& dups, int verbose = 0){
+    for(auto d : dups){
+      if(verbose > 1){
+        cout << d.chr + 1 << "\t" << d.start << "\t" << d.end << "\t" << d.cnA << "\t" << d.cnB << endl;
+      }
+      if(d.chr != chr){
+        continue;
+      }else{  // on the same chromosome
+        if(start >= d.start && end <= d.end){
+            return true;
+        } 
+      }
+    }
+
+    return false;
+   }
+
+
     // summary for the whole genome of each cell, computed from the set of adjacencies
     void get_summary_stats(int verbose = 0){
+      if(verbose > 1) cout << "computing summary stats\n";
       get_oscillating_CN(verbose);
 
       for(int i  = 0; i < NUM_CHR; i++){
@@ -1078,13 +1126,15 @@ public:
         int chr1 = g->breakpoints[adj->junc_id1]->chr;
         int chr2 = g->breakpoints[adj->junc_id2]->chr;
 
-        // exclude chromosome end when counting breakpoints (chr_ends should only appear in intervals)
+        int pos1 = g->breakpoints[adj->junc_id1]->pos;
+        int pos2 = g->breakpoints[adj->junc_id2]->pos;
+
+        // exclude chromosome ends when counting breakpoints (chr_ends should only appear in intervals)
         // each breakpoint connects with just one variant adjacency
         if(find(g->chr_ends.begin(), g->chr_ends.end(), adj->junc_id1) == g->chr_ends.end()){
           n_bp += 1;
           bp_unique.insert(adj->junc_id1);
-
-          int pos1 = g->breakpoints[adj->junc_id1]->pos;
+         
           int haplotype1 = g->breakpoints[adj->junc_id1]->haplotype;
           vector<int> dbs1{chr1, pos1, haplotype1};
           dbs_unique.insert(dbs1);
@@ -1094,8 +1144,7 @@ public:
         if(find(g->chr_ends.begin(), g->chr_ends.end(), adj->junc_id2) == g->chr_ends.end()){
           n_bp += 1;
           bp_unique.insert(adj->junc_id2);
-
-          int pos2 = g->breakpoints[adj->junc_id2]->pos;
+         
           int haplotype2 = g->breakpoints[adj->junc_id2]->haplotype;
           vector<int> dbs2{chr2, pos2, haplotype2};
           dbs_unique.insert(dbs2);
@@ -1108,7 +1157,7 @@ public:
               adj->print();
               g->breakpoints[adj->junc_id1]->print();
               g->breakpoints[adj->junc_id2]->print();
-              exit(1);
+              exit(FAIL);
           }
           chr_type_num[chr1][type] += 1;
           chr_type_num[chr2][type] += 1;
@@ -1116,33 +1165,109 @@ public:
           chr_type_num[chr1][type] += 1;
         }
 
+        // int start = min(pos1, pos2);
+        // int end = max(pos1, pos2);
+        // string pos = to_string(chr1) + "_" + to_string(start) + "_" + to_string(end);
         switch(type){
-          case DUP: n_dup += 1; break;
-          case DEL: n_del += 1; break;
+          // case DUP: {
+          //   if(verbose > 1) cout << "candidate DUP: " << chr1 + 1 << "\t" << start << "\t" << end << endl;
+          //   // if(pos_dup_by_adj.count(pos)){  // really duplicated
+          //   if(is_copy_changed(chr1, start, end, dups, verbose)){  // really duplicated
+          //     n_dup += 1; 
+          //     // pos_dup_by_adj.insert(pos);
+          //   }else{              
+          //     chr_type_num[chr1][type] -= 1;
+          //     adj->sv_type = OTHER;
+          //   }
+          //   break;
+          // }
+          // case DEL:{
+          //   if(verbose > 1) cout << "candidate DEL: " << chr1 + 1 << "\t" << start << "\t" << end << endl;
+          //   // if(!pos_del_by_adj.count(pos)){
+          //   if(is_copy_changed(chr1, start, end, dels, verbose)){  // really deleted
+          //     n_del += 1; 
+          //     // pos_del_by_adj.insert(pos);
+          //   }else{
+          //     chr_type_num[chr1][type] -= 1;
+          //     adj->sv_type = OTHER;
+          //   }
+          //   break;
+          // }
           case H2HINV: n_h2h += 1; break;
           case T2TINV: n_t2t += 1; break;
           case TRA: n_tra += 1; break;
           default: ;
         }
-      }
+      }        
 
       for(auto pp : g->paths){
         path* p = pp.second;
+
         if(p->n_centromere > 1){
           cout << "Path " << p->id + 1 << " has " << p->n_centromere << " centromeres!" << endl;
           p->print();
-          exit(-1);
+          exit(FAIL);
         }
+
         if(p->is_circle) n_circle += 1;
       }
     }
 
+    // print summary information for each cell whose values are used for inference
+    void print_total_summary(vector<pos_cn>& dups, vector<pos_cn> dels, int verbose = 0){
+      // set<string> pos_del_by_adj;
+      // set<string> pos_dup_by_adj;
+      // compute summary statistics based on adjacency
+      // get_summary_stats(pos_dup_by_adj, pos_del_by_adj, verbose);
+      get_summary_stats(verbose);
+
+      if(verbose > 1) cout << "appending new DUP/DEL\n";   
+      // set<string>::iterator piter;
+      vector<pos_cn>::iterator citer = dups.begin();
+      while(citer != dups.end()){
+        pos_cn d = *citer;
+        // string pos = to_string(d.chr) + "_" + to_string(d.start) + "_" + to_string(d.end);
+        // piter = find(pos_dup_by_adj.begin(), pos_dup_by_adj.end(), pos);
+        // if(piter == pos_dup_by_adj.end()){
+          chr_type_num[d.chr][DUP] += 1;
+          n_dup += 1; 
+          citer++;       
+        // }else{
+        //   citer = dups.erase(citer);  // remove duplicated ones
+        // }
+      }
+
+      citer = dels.begin();
+      while(citer != dels.end()){
+        pos_cn d = *citer;
+        // string pos = to_string(d.chr) + "_" + to_string(d.start) + "_" + to_string(d.end);
+        // piter = find(pos_del_by_adj.begin(), pos_del_by_adj.end(), pos);
+        // if(piter == pos_del_by_adj.end()){
+          chr_type_num[d.chr][DEL] += 1;
+          n_del += 1;  
+          citer++;      
+        // }else{
+        //   citer = dels.erase(citer);  // remove duplicated ones
+        // }
+      }
+ 
+
+      // int nSV = n_dup + n_del + n_h2h + n_t2t;
+      cout << div_occur << "\t" << cell_ID;
+      //  << "\t" << 0 << "\t" << bp_unique.size() << "\t" << nSV << endl;
+      for(int i = 0; i < NUM_CHR; i++){
+        int nSV_chr = chr_type_num[i][DEL] + chr_type_num[i][DUP] + chr_type_num[i][H2HINV] + chr_type_num[i][T2TINV];
+        // cout << div_occur << "\t" << cell_ID << "\t" << i+1 << "\t" << chr_n_bp[i] << "\t" << nSV_chr << endl;
+        cout << "\t" << chr_bp_unique[i].size() << "\t" << chr_n_osc2[i] << "\t" << chr_n_osc3[i]  << "\t" << nSV_chr;
+      }
+      cout << endl;      
+    }
 
 
     // a whole cycle of cell division
     // duplication and repair of its genome
     // Path IDs are reencoded in the next cell cylce
-    void do_cell_cycle(Cell_ptr dcell1, Cell_ptr dcell2, int& n_telo_fusion, int& n_complex_path, int& n_path_break, int mean_local_frag, double circular_prob, int verbose = 0){
+    void do_cell_cycle(Cell_ptr dcell1, Cell_ptr dcell2, int& n_telo_fusion, int& n_complex_path, int& n_path_break, int mean_local_frag, double frac_unrepaired, double circular_prob, int verbose = 0){
       // verbose = 2;
       // introduces DSBs into the genome prior to G1 repairs
       if(verbose > 1){
@@ -1157,7 +1282,7 @@ public:
       sphase_g2(n_telo_fusion, verbose);
 
       if(verbose > 0) cout << "\nMitosis phase" << endl;
-      mitosis(dcell1, dcell2, n_complex_path, n_path_break, mean_local_frag, circular_prob, verbose);
+      mitosis(dcell1, dcell2, n_complex_path, n_path_break, mean_local_frag, frac_unrepaired, circular_prob, verbose);
 
       if(verbose > 2){
         cout << "\nnumber of DSBs in G1: " << n_dsb << endl;
@@ -1181,7 +1306,7 @@ public:
   
     // Follow format of RCK output
     // "chr1", "coord1", "strand1", "chr2", "coord2", "strand2",	"extra"
-    void write_sv(string fname, int verbose = 0){
+    void write_sv(string fname, const vector<pos_cn>& dups, const vector<pos_cn>& dels, int verbose = 0){
       // string fname = "sv_data.tsv"
       ofstream fout(fname);
       string header = "chr1\tcoord1\tstrand1\tchr2\tcoord2\tstrand2\textra\n";
@@ -1216,11 +1341,15 @@ public:
       //   }
       // }
 
-      vector<chr_pos> dups;
-      g->get_dup_pseudo_adjacency(dups, verbose);
       for(auto d: dups){
           string extra = "sv_type=DUP";
           string line = to_string(d.chr + 1) + "\t" + to_string(d.start) + "\t" + "-" + "\t" + to_string(d.chr + 1) + "\t" + to_string(d.end) + "\t" + "+" + "\t" + extra + "\n";
+          fout << line;       
+      }
+
+      for(auto d: dels){
+          string extra = "sv_type=DEL";
+          string line = to_string(d.chr + 1) + "\t" + to_string(d.start) + "\t" + "+" + "\t" + to_string(d.chr + 1) + "\t" + to_string(d.end) + "\t" + "-" + "\t" + extra + "\n";
           fout << line;       
       }
 
@@ -1318,24 +1447,28 @@ public:
 
 
     // SVtype (character): type of SV, encoded as: DEL (deletion-like; +/-), DUP (duplication-like; -/+), h2hINV (head-to-head inversion; +/+), and t2tINV (tail-to-tail inversion; -/-).
-    void write_shatterseek(string fname_sv, string fname_cn, int verbose = 0){
+    void write_shatterseek(string fname_sv, string fname_cn, const vector<pos_cn>& dups, const vector<pos_cn>& dels, int verbose = 0){
       // "chrom1", "start1", "strand1", "chrom2", "end2", "strand2", "svclass"
       ofstream fout(fname_sv);
       string header = "chrom1\tstart1\tstrand1\tchrom2\tend2\tstrand2\tsvclass\n";
       fout << header;
       for(auto adjm : g->adjacencies){
         adjacency* adj = adjm.second;
-        if(adj->sv_type == NONE) continue;
+        if(adj->sv_type == NONE || adj->sv_type == DELLIKE || adj->sv_type == DUPLIKE) continue;
         string extra = get_sv_type_string(adj->sv_type);
         string line = g->get_sv_string(adj, extra);
         fout << line;
       }
 
-      vector<chr_pos> dups;
-      g->get_dup_pseudo_adjacency(dups, verbose);
       for(auto d: dups){
           string extra = "DUP";
           string line = to_string(d.chr + 1) + "\t" + to_string(d.start) + "\t" + "-" + "\t" + to_string(d.chr + 1) + "\t" + to_string(d.end) + "\t" + "+" + "\t" + extra + "\n";
+          fout << line;       
+      }
+
+      for(auto d: dels){
+          string extra = "DEL";
+          string line = to_string(d.chr + 1) + "\t" + to_string(d.start) + "\t" + "+" + "\t" + to_string(d.chr + 1) + "\t" + to_string(d.end) + "\t" + "-" + "\t" + extra + "\n";
           fout << line;       
       }
 
@@ -1393,7 +1526,7 @@ public:
       for(auto f : freq){
         if(f.second > 1){
           cout << "duplicated path: " << f.first << "\t" << f.second << endl;
-          exit(1);
+          exit(FAIL);
         }       
       }
     }

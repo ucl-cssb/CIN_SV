@@ -323,7 +323,7 @@ public:
        output:
         a tree-like structure. For each Cell, its children, occurence time, birth rate, death rate
      */
-     void grow_with_dsb(const Cell_ptr ncell, const Model& model, int Nend, int mean_local_frag, double circular_prob, int track_all = 0, int verbose = 0, int restart = 1, double tend = DBL_MAX){
+     void grow_with_dsb(const Cell_ptr ncell, const Model& model, int Nend, int mean_local_frag, double frac_unrepaired, double circular_prob, int track_all = 0, int verbose = 0, int restart = 1, double tend = DBL_MAX){
          // Initialize the simulation with one cell
          if(restart == 1) initialize_with_dsb(ncell, model, track_all);
 
@@ -376,7 +376,7 @@ public:
                  dcell2->copy_parent((*rcell));
 
                  // this->n_cycle++;
-                 rcell->do_cell_cycle(dcell1, dcell2, n_telo_fusion, n_complex_path, n_path_break, mean_local_frag, circular_prob, verbose);
+                 rcell->do_cell_cycle(dcell1, dcell2, n_telo_fusion, n_complex_path, n_path_break, mean_local_frag, frac_unrepaired, circular_prob, verbose);
 
                  this->ntot = this->ntot + 2;
 
