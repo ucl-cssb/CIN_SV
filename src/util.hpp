@@ -55,8 +55,8 @@ vector<double> CHR_PROBS_vec(NUM_CHR, 1.0 / NUM_CHR);
 double* CHR_PROBS = &CHR_PROBS_vec[0];
 
 const int NUM_SVTYPE = 8;
-// DELLIKE: +/-, DUPLIKE: -/+, same orientation as DEL/DUP, but copy number may not change
-enum SV_type{NONE, DEL, DUP, H2HINV, T2TINV, TRA, DELLIKE, DUPLIKE}; // only for variant adjacency, TRA: intra-chromosomal
+// DEL: +/-, DUP: -/+, same orientation as DELREAL/DUPREAL, but copy number may not change
+enum SV_type{NONE, DEL, DUP, H2HINV, T2TINV, BND, DELREAL, DUPREAL}; // only for variant adjacency, BND: intra-chromosomal
 
 enum SStat_type{ALL};
 enum Growth_type{ONLY_BIRTH, CHANGE_BIRTH, CHANGE_DEATH, CHANGE_BOTH};
@@ -348,9 +348,9 @@ string get_sv_type_string(int type){
   switch (type) {
     case DUP: type_str = "DUP"; break;
     case DEL: type_str = "DEL"; break;
-    case DUPLIKE: type_str = "DUPLIKE"; break;
-    case DELLIKE: type_str = "DELLIKE"; break;    
-    case TRA: type_str = "TRA"; break;
+    case DUPREAL: type_str = "DUPREAL"; break;
+    case DELREAL: type_str = "DELREAL"; break;    
+    case BND: type_str = "BND"; break;
     case H2HINV: type_str = "H2HINV"; break;
     case T2TINV: type_str = "T2TINV"; break;
     default: type_str = "NO SV";

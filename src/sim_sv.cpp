@@ -27,6 +27,7 @@ int main(int argc, char const *argv[]){
     string fchr;
     int mean_local_frag;  // mean number of breakpoints introduced by local fragmentation during mitosis
     double frac_unrepaired_local;
+    int div_break;   // ID of division when DSBs occurs
 
     double leap_size;
 
@@ -40,13 +41,6 @@ int main(int argc, char const *argv[]){
     int genotype_diff;
     int growth_type;
     int norm_by_bin;
-
-    int stat_type;
-    double frac_cutoff;
-    double min_freq;
-    double max_freq;
-    double delta;
-    int use_std;
 
     string outdir, suffix; // output
     int write_shatterseek, write_circos, write_sumstats, write_genome;
@@ -69,12 +63,12 @@ int main(int argc, char const *argv[]){
     required.add_options()
       // ("n_cycle", po::value<int>(&n_cycle)->default_value(2), "number of cell cycles") // only meaningful when tracking one child
       ("n_cell,n", po::value<int>(&n_cell)->default_value(2), "size of final population")
-
+      ("div_break", po::value<int>(&div_break)->default_value(0), "maximum ID of cell division when DSBs occurs")
       // ("dsb_rate,r", po::value<double>(&dsb_rate)->default_value(20), "rate of double strand break per division")
       ("min_dsb", po::value<int>(&min_dsb)->default_value(0), "minimal number of double strand breaks")
       ("max_dsb", po::value<int>(&max_dsb)->default_value(40), "maximal number of double strand breaks")
-      ("n_dsb", po::value<int>(&n_dsb)->default_value(20), "maximal number of double strand breaks")
-      ("frac_unrepaired", po::value<double>(&frac_unrepaired)->default_value(0), "number of unrepaired double strand breaks, default: all breaks are repaired")
+      ("n_dsb", po::value<int>(&n_dsb)->default_value(20), "number of double strand breaks introduced in G1")
+      ("frac_unrepaired", po::value<double>(&frac_unrepaired)->default_value(0), "number of unrepaired double strand breaks in the cell, default: all breaks are repaired")
       ("mean_local_frag", po::value<int>(&mean_local_frag)->default_value(0), "mean number of breakpoints introduced by local fragmentation during mitosis")
       ("frac_unrepaired_local", po::value<double>(&frac_unrepaired_local)->default_value(1), "number of unrepaired double strand breaks in local fragmentation during mitosis, default: all breaks are not repaired")
       ("chr_prob", po::value<int>(&chr_prob)->default_value(0), "the probability of double strand breaks across chromosomes. 0: random; 1: biased; 2: fixed")
@@ -102,10 +96,6 @@ int main(int argc, char const *argv[]){
       ("growth_type,t", po::value<int>(&growth_type)->default_value(0), "Type of growth when adding selection. 0: only birth; 1: change birth rate; 2: change death rate; 3: change both birth or death rate")
 
       // options related to summary statistics
-      ("stat_type,s", po::value<int>(&stat_type)->default_value(4), "type of summary statistics. 0: variance; 1: clone-pairwise differences; 2: average CNP; 3: complete CNP; 4: sample-pairwise differences")
-      ("use_std", po::value<int>(&use_std)->default_value(0), "whether or not to use standard deviation of pairwise divergence. If not, the variance is output")
-      // ("bp_cutoff", po::value<double>(&BP_CUTOFF)->default_value(BP_CUTOFF), "threshold to determine whether a breakpoint can be detected or not")
-      // ("frac_cutoff", po::value<double>(&frac_cutoff)->default_value(0.5), "cutoff of counting breakpoints")
 
       // options related to output
       ("suffix", po::value<string>(&suffix)->default_value(""), "suffix of output file")
@@ -168,11 +158,11 @@ int main(int argc, char const *argv[]){
 
     Model start_model(model_ID, genotype_diff, growth_type, fitness, use_alpha);
     int n_unrepaired = round(n_dsb * frac_unrepaired);
-    Cell_ptr start_cell = new Cell(1, 0, birth_rate, death_rate, n_dsb, n_unrepaired, 0);
+    Cell_ptr start_cell = new Cell(1, 0, birth_rate, death_rate, n_dsb, n_unrepaired, 0, div_break);
     Clone* s = new Clone(1, 0);
     
-    if(verbose > 0) cout << "Start cell growth " << endl;
-    s->grow_with_dsb(start_cell, start_model, n_cell, mean_local_frag, frac_unrepaired_local, circular_prob, track_all, verbose);
+    if(verbose > 0) cout << "Start cell growth with " << n_unrepaired << " unrepaired DSBs" << endl;
+    s->grow_with_dsb(start_cell, start_model, n_cell, frac_unrepaired, mean_local_frag, frac_unrepaired_local, circular_prob, track_all, verbose);
     if(verbose > 0) cout << "\nFinish cell growth " << endl;
 
     vector<Cell_ptr> final_cells;
@@ -215,7 +205,8 @@ int main(int argc, char const *argv[]){
 
       vector<pos_cn> dups;
       vector<pos_cn> dels;
-      cell->g->get_pseudo_adjacency(dups, dels, verbose);
+      // seems not necessary as the breakpoints can be telled from copy number segments
+      // cell->g->get_pseudo_adjacency(dups, dels, verbose);
 
       // compute and print summary statistics
       cell->print_total_summary(dups, dels, verbose);

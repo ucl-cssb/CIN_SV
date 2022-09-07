@@ -109,6 +109,7 @@ public:
     // int flag;   // whether the cell is alive or not. 0:new, 1:divided, -1: death
     double time_occur;
     int div_occur;  // occur at which division
+    int div_break;
 
     // parameters related to cell growth
     double birth_rate;
@@ -153,14 +154,22 @@ public:
         clone_ID = 0;
 
         time_occur = 0;
-        div_occur = 0; // whether the cell is sampled or not
+        div_occur = 0; // whether the cell is divided or not
 
         birth_rate = log(2);
         death_rate = 0;
 
-        n_dsb  = 0;
+        n_dsb = 0;
         n_unrepaired = 0;
-    }
+
+        n_bp = 0;  // each breakpoint may have at most two connections
+        n_del = 0;
+        n_dup = 0;
+        n_h2h = 0;
+        n_t2t = 0;
+        n_tra = 0;
+        n_circle = 0;  
+    }         
 
 
     Cell(int cell_ID, int parent_ID, double time_occur){
@@ -179,10 +188,17 @@ public:
         //
         // this->dsb_rate = 0;
         // this->n_dsb  = 0;
+        this->n_bp = 0;  // each breakpoint may have at most two connections
+        this->n_del = 0;
+        this->n_dup = 0;
+        this->n_h2h = 0;
+        this->n_t2t = 0;
+        this->n_tra = 0;
+        this->n_circle = 0;          
     }
 
 
-    Cell(int cell_ID, int parent_ID, double birth_rate, double death_rate, int n_dsb, int n_unrepaired, double time_occur){
+    Cell(int cell_ID, int parent_ID, double birth_rate, double death_rate, int n_dsb, int n_unrepaired, double time_occur, int div_break){
         this->cell_ID = cell_ID;
         this->parent_ID = parent_ID;
         this->clone_ID = 0;
@@ -195,8 +211,17 @@ public:
 
         this->n_dsb  = n_dsb;
         this->n_unrepaired = n_unrepaired;
+        this->div_break = div_break;
 
         this->g = new genome(cell_ID);
+
+        this->n_bp = 0;  // each breakpoint may have at most two connections
+        this->n_del = 0;
+        this->n_dup = 0;
+        this->n_h2h = 0;
+        this->n_t2t = 0;
+        this->n_tra = 0;
+        this->n_circle = 0;          
     }
 
 
@@ -215,6 +240,7 @@ public:
 
         // this->time_occur = ncell.time_occur;
         this->div_occur = ncell.div_occur + 1;
+        this->div_break = ncell.div_break;
 
         this->birth_rate = ncell.birth_rate;
         this->death_rate = ncell.death_rate;
@@ -427,6 +453,75 @@ public:
     }
 
 
+    void get_left_interval(adjacency* adj, int& ps, int& pe, int& chr, int verbose = 0){
+        int jid1 = adj->junc_id1;
+        int jid2 = adj->junc_id2;
+        assert(g->breakpoints[jid1]->chr == g->breakpoints[jid2]->chr);
+
+        if(verbose > 1){
+          cout << "add break on left side of second interval " << adj->id << endl;
+          adj->print();
+          g->breakpoints[jid1]->print();
+          g->breakpoints[jid2]->print();
+        }
+
+        chr = g->breakpoints[jid1]->chr;
+        int pos1 = g->breakpoints[jid1]->pos;
+        int pos2 = g->breakpoints[jid2]->pos;
+        if(adj->is_inverted){
+          if(pos1 < pos2){
+            ps = CENT_ENDS[chr];
+            pe = pos2;
+          }else{
+            ps = pos2;
+            pe = CENT_STARTS[chr];
+          }
+        }else{
+          if(pos1 < pos2){
+            ps = pos1;
+            pe = CENT_STARTS[chr];
+          }else{
+            ps = CENT_ENDS[chr];
+            pe = pos1;
+          }
+        }
+    }
+
+
+    void get_right_interval(adjacency* adj, int& ps, int& pe, int& chr, int verbose = 0){
+        int jid1 = adj->junc_id1;
+        int jid2 = adj->junc_id2;
+        assert(g->breakpoints[jid1]->chr == g->breakpoints[jid2]->chr);
+
+        if(verbose > 1){
+          cout << "add break on right side of first interval " << adj->id << endl;
+          adj->print();
+          g->breakpoints[jid1]->print();
+          g->breakpoints[jid2]->print();
+        }
+
+        chr = g->breakpoints[jid1]->chr;
+        int pos1 = g->breakpoints[jid1]->pos;
+        int pos2 = g->breakpoints[jid2]->pos;
+        if(adj->is_inverted){
+          if(pos1 < pos2){
+            ps = pos1;
+            pe = CENT_STARTS[chr];
+          }else{
+            ps = CENT_ENDS[chr];
+            pe = pos1;
+          }
+        }else{
+          if(pos1 < pos2){
+            ps = CENT_ENDS[chr];
+            pe = pos2;
+          }else{    // inverted region
+            ps = pos2;
+            pe = CENT_STARTS[chr];
+          }
+        }      
+    }
+
     // randombly choose an interval to introduce the break
     // when breaking paths with multiple centromeres, a breakpoint must be to the other side of another breakpoint
     // For each adjacent interval, breakpoint is either at right of 1st interval or left of 2nd interval when finding all breakpoints before splitting intervals
@@ -444,74 +539,28 @@ public:
         assert(adj->is_centromeric);
         assert(g->breakpoints[adj->junc_id1]->chr == g->breakpoints[adj->junc_id2]->chr);
         assert(g->breakpoints[adj->junc_id1]->haplotype == g->breakpoints[adj->junc_id2]->haplotype);
-        int bp, ps, pe;
+        int bp, ps, pe;        
 
         if(sel == 0){  // break on left side of second interval
           adj = g->adjacencies[pair.second];   // should not be ptel
-          int jid1 = adj->junc_id1;
-          int jid2 = adj->junc_id2;
-          assert(g->breakpoints[jid1]->chr == g->breakpoints[jid2]->chr);
-          if(verbose > 1){
-            cout << "add break on left side of second interval " << adj->id << endl;
-            adj->print();
-            g->breakpoints[jid1]->print();
-            g->breakpoints[jid2]->print();
-          }
-          chr = g->breakpoints[jid1]->chr;
-          int pos1 = g->breakpoints[jid1]->pos;
-          int pos2 = g->breakpoints[jid2]->pos;
-          if(adj->is_inverted){
-            if(pos1 < pos2){
-              ps = CENT_ENDS[chr];
-              pe = pos2;
-            }else{
-              ps = pos2;
-              pe = CENT_STARTS[chr];
-            }
-          }else{
-            if(pos1 < pos2){
-              ps = pos1;
-              pe = CENT_STARTS[chr];
-            }else{
-              ps = CENT_ENDS[chr];
-              pe = pos1;
-            }
-          }
+          get_left_interval(adj, ps, pe, chr, verbose);
         }else{ // break on right side of first interval
           // should not be qtel
-          int jid1 = adj->junc_id1;
-          int jid2 = adj->junc_id2;
-          assert(g->breakpoints[jid1]->chr == g->breakpoints[jid2]->chr);
-          if(verbose > 1){
-            cout << "add break on right side of first interval " << adj->id << endl;
-            adj->print();
-            g->breakpoints[jid1]->print();
-            g->breakpoints[jid2]->print();
-          }
-          chr = g->breakpoints[jid1]->chr;
-          int pos1 = g->breakpoints[jid1]->pos;
-          int pos2 = g->breakpoints[jid2]->pos;
-          if(adj->is_inverted){
-            if(pos1 < pos2){
-              ps = pos1;
-              pe = CENT_STARTS[chr];
-            }else{
-              ps = CENT_ENDS[chr];
-              pe = pos1;
-            }
-          }else{
-            if(pos1 < pos2){
-              ps = CENT_ENDS[chr];
-              pe = pos2;
-            }else{    // inverted region
-              ps = pos2;
-              pe = CENT_STARTS[chr];
-            }
-          }
+          get_right_interval(adj, ps, pe, chr, verbose);
         }
 
         if(verbose > 1) cout << ps << "\t" << pe << endl;
-        assert(ps < pe);
+        // assert(ps < pe);     // it may not be possible to introduce a breakpoint without breaking centromere
+        if(ps >= pe){
+          if(sel == 0){
+            adj = g->adjacencies[pair.first]; 
+            get_right_interval(adj, ps, pe, chr, verbose);
+          }else{
+            adj = g->adjacencies[pair.second];   // should not be ptel
+            get_left_interval(adj, ps, pe, chr, verbose);
+          }
+        }
+
         bp = (int)runiform(r, ps, pe);
         left_jid = adj->junc_id1;
         right_jid = adj->junc_id2;
@@ -733,7 +782,7 @@ public:
       }
 
 
-    void get_path_from_bp(int& pid, breakpoint* js, int mean_local_frag, double frac_unrepaired, double circular_prob, Cell_ptr dcell1, Cell_ptr dcell2, int verbose = 0){
+    void split_path_from_bp(int& pid, breakpoint* js, int mean_local_frag, double frac_unrepaired, double circular_prob, Cell_ptr dcell1, Cell_ptr dcell2, int verbose = 0){
         //  each path will have a unique ID
         path* p = new path(++pid, this->cell_ID, COMPLETE);
         get_path_from_bp(p, js, frac_unrepaired, circular_prob, verbose);
@@ -853,20 +902,18 @@ public:
           cout << "\nspliting path starting from breakpoint " << jid << endl;
           g->breakpoints[jid]->print();
         }
-        get_path_from_bp(pid, g->breakpoints[jid], mean_local_frag, frac_unrepaired, circular_prob, dcell1, dcell2, verbose);
+        split_path_from_bp(pid, g->breakpoints[jid], mean_local_frag, frac_unrepaired, circular_prob, dcell1, dcell2, verbose);
       }
 
     }
 
 
     // introduce DSB and repair breaks (adding variant adjacencies)
-    void g1(int n_dsb, int n_unrepaired, double circular_prob, int verbose = 0){
+    void g1(double frac_unrepaired, double circular_prob, int verbose = 0){
       // verbose = 1;
       if(verbose > 0) cout << "\nIntroducing " << n_dsb << " DSBs" << endl;
       g->generate_dsb(n_dsb, verbose);
 
-      int n_torepair = n_dsb - n_unrepaired;
-      if(verbose > 0) cout << "\nRepairing " << n_torepair << " DSBs" << endl;
       vector<breakpoint*> junc2repair;
       // connect segments randomly to get variant adjacencies (repair DSBs)
       // only breakpoints with missing connections need to be repaired
@@ -876,6 +923,11 @@ public:
           junc2repair.push_back(j);
         }
       }
+
+      // assume two junction points are related to one DSB
+      n_unrepaired = round(junc2repair.size() / 2 * frac_unrepaired);
+      int n_torepair = junc2repair.size() / 2 - n_unrepaired;
+      if(verbose > 0) cout << "\nRepairing " << n_torepair << " DSBs" << endl;      
       if(n_torepair > 0){
         g->repair_dsb(n_unrepaired, junc2repair, verbose);
       }
@@ -1152,7 +1204,7 @@ public:
         }
 
         if(chr1 != chr2){
-          if(type != TRA){
+          if(type != BND){
               cout << "Weird type of adjacency!" << endl;
               adj->print();
               g->breakpoints[adj->junc_id1]->print();
@@ -1169,33 +1221,33 @@ public:
         // int end = max(pos1, pos2);
         // string pos = to_string(chr1) + "_" + to_string(start) + "_" + to_string(end);
         switch(type){
-          // case DUP: {
-          //   if(verbose > 1) cout << "candidate DUP: " << chr1 + 1 << "\t" << start << "\t" << end << endl;
-          //   // if(pos_dup_by_adj.count(pos)){  // really duplicated
-          //   if(is_copy_changed(chr1, start, end, dups, verbose)){  // really duplicated
-          //     n_dup += 1; 
-          //     // pos_dup_by_adj.insert(pos);
-          //   }else{              
-          //     chr_type_num[chr1][type] -= 1;
-          //     adj->sv_type = OTHER;
-          //   }
-          //   break;
-          // }
-          // case DEL:{
-          //   if(verbose > 1) cout << "candidate DEL: " << chr1 + 1 << "\t" << start << "\t" << end << endl;
-          //   // if(!pos_del_by_adj.count(pos)){
-          //   if(is_copy_changed(chr1, start, end, dels, verbose)){  // really deleted
-          //     n_del += 1; 
-          //     // pos_del_by_adj.insert(pos);
-          //   }else{
-          //     chr_type_num[chr1][type] -= 1;
-          //     adj->sv_type = OTHER;
-          //   }
-          //   break;
-          // }
+          case DUP: {
+            // if(verbose > 1) cout << "candidate DUP: " << chr1 + 1 << "\t" << start << "\t" << end << endl;
+            // if(pos_dup_by_adj.count(pos)){  // really duplicated
+            // if(is_copy_changed(chr1, start, end, dups, verbose)){  // really duplicated
+            n_dup += 1; 
+              // pos_dup_by_adj.insert(pos);
+            // }else{              
+            //   chr_type_num[chr1][type] -= 1;
+            //   adj->sv_type = OTHER;
+            // }
+            break;
+          }
+          case DEL:{
+            // if(verbose > 1) cout << "candidate DEL: " << chr1 + 1 << "\t" << start << "\t" << end << endl;
+            // // if(!pos_del_by_adj.count(pos)){
+            // if(is_copy_changed(chr1, start, end, dels, verbose)){  // really deleted
+            n_del += 1; 
+              // pos_del_by_adj.insert(pos);
+            // }else{
+            //   chr_type_num[chr1][type] -= 1;
+            //   adj->sv_type = OTHER;
+            // }
+            break;
+          }
           case H2HINV: n_h2h += 1; break;
           case T2TINV: n_t2t += 1; break;
-          case TRA: n_tra += 1; break;
+          case BND: n_tra += 1; break;
           default: ;
         }
       }        
@@ -1221,7 +1273,7 @@ public:
       // get_summary_stats(pos_dup_by_adj, pos_del_by_adj, verbose);
       get_summary_stats(verbose);
 
-      if(verbose > 1) cout << "appending new DUP/DEL\n";   
+      if(verbose > 1) cout << "appending real DUP/DEL\n";   
       // set<string>::iterator piter;
       vector<pos_cn>::iterator citer = dups.begin();
       while(citer != dups.end()){
@@ -1229,7 +1281,7 @@ public:
         // string pos = to_string(d.chr) + "_" + to_string(d.start) + "_" + to_string(d.end);
         // piter = find(pos_dup_by_adj.begin(), pos_dup_by_adj.end(), pos);
         // if(piter == pos_dup_by_adj.end()){
-          chr_type_num[d.chr][DUP] += 1;
+          chr_type_num[d.chr][DUPREAL] += 1;
           n_dup += 1; 
           citer++;       
         // }else{
@@ -1243,7 +1295,7 @@ public:
         // string pos = to_string(d.chr) + "_" + to_string(d.start) + "_" + to_string(d.end);
         // piter = find(pos_del_by_adj.begin(), pos_del_by_adj.end(), pos);
         // if(piter == pos_del_by_adj.end()){
-          chr_type_num[d.chr][DEL] += 1;
+          chr_type_num[d.chr][DELREAL] += 1;
           n_del += 1;  
           citer++;      
         // }else{
@@ -1267,7 +1319,7 @@ public:
     // a whole cycle of cell division
     // duplication and repair of its genome
     // Path IDs are reencoded in the next cell cylce
-    void do_cell_cycle(Cell_ptr dcell1, Cell_ptr dcell2, int& n_telo_fusion, int& n_complex_path, int& n_path_break, int mean_local_frag, double frac_unrepaired, double circular_prob, int verbose = 0){
+    void do_cell_cycle(Cell_ptr dcell1, Cell_ptr dcell2, double frac_unrepaired, int& n_telo_fusion, int& n_complex_path, int& n_path_break, int mean_local_frag, double frac_unrepaired_local, double circular_prob, int verbose = 0){
       // verbose = 2;
       // introduces DSBs into the genome prior to G1 repairs
       if(verbose > 1){
@@ -1276,13 +1328,18 @@ public:
       }
 
       if(verbose > 0) cout << "\nG1 phase" << endl;
-      g1(n_dsb, n_unrepaired, circular_prob, verbose);
+      if(div_occur > div_break){
+        if(verbose > 1) cout << "No new breaks in division " << div_occur << " in cell " << cell_ID << endl;
+        n_dsb = 0;
+        mean_local_frag = 0;
+      }
+      g1(frac_unrepaired, circular_prob, verbose);
 
       if(verbose > 0) cout << "\nSphase and G2" << endl;
       sphase_g2(n_telo_fusion, verbose);
 
       if(verbose > 0) cout << "\nMitosis phase" << endl;
-      mitosis(dcell1, dcell2, n_complex_path, n_path_break, mean_local_frag, frac_unrepaired, circular_prob, verbose);
+      mitosis(dcell1, dcell2, n_complex_path, n_path_break, mean_local_frag, frac_unrepaired_local, circular_prob, verbose);
 
       if(verbose > 2){
         cout << "\nnumber of DSBs in G1: " << n_dsb << endl;
@@ -1411,7 +1468,7 @@ public:
       fout.close();
 
       for(int i = 0; i < NUM_CHR; i++){
-        fout_chr << to_string(div_occur) + "\t" + to_string(cell_ID) + "\t" + to_string(i + 1) + "\t" << chr_bp_unique[i].size() << "\t" << chr_type_num[i][DEL] << "\t" << chr_type_num[i][DUP] << "\t" << chr_type_num[i][H2HINV] << "\t" << chr_type_num[i][T2TINV] << "\t" << chr_type_num[i][TRA] << "\n";
+        fout_chr << to_string(div_occur) + "\t" + to_string(cell_ID) + "\t" + to_string(i + 1) + "\t" << chr_bp_unique[i].size() << "\t" << chr_type_num[i][DEL] << "\t" << chr_type_num[i][DUP] << "\t" << chr_type_num[i][H2HINV] << "\t" << chr_type_num[i][T2TINV] << "\t" << chr_type_num[i][BND] << "\n";
       }
       fout_chr.close();
     }
@@ -1434,9 +1491,9 @@ public:
     //     n_dup += chr_type_num[i][DUP];
     //     n_h2h += chr_type_num[i][H2HINV];
     //     n_t2t += chr_type_num[i][T2TINV];
-    //     n_tra += chr_type_num[i][TRA];
+    //     n_tra += chr_type_num[i][BND];
 
-    //     fout_chr << i + 1 << "\t" << g->vec_n_dsb[i] << "\t" << chr_type_num[i][DEL] << "\t" << chr_type_num[i][DUP] << "\t" << chr_type_num[i][H2HINV] << "\t" << chr_type_num[i][T2TINV] << "\t" << chr_type_num[i][TRA] << endl;
+    //     fout_chr << i + 1 << "\t" << g->vec_n_dsb[i] << "\t" << chr_type_num[i][DEL] << "\t" << chr_type_num[i][DUP] << "\t" << chr_type_num[i][H2HINV] << "\t" << chr_type_num[i][T2TINV] << "\t" << chr_type_num[i][BND] << endl;
     //   }
     //   fout_chr.close();
 
@@ -1454,20 +1511,20 @@ public:
       fout << header;
       for(auto adjm : g->adjacencies){
         adjacency* adj = adjm.second;
-        if(adj->sv_type == NONE || adj->sv_type == DELLIKE || adj->sv_type == DUPLIKE) continue;
+        if(adj->sv_type == NONE) continue;
         string extra = get_sv_type_string(adj->sv_type);
         string line = g->get_sv_string(adj, extra);
         fout << line;
       }
 
       for(auto d: dups){
-          string extra = "DUP";
+          string extra = "DUPREAL";
           string line = to_string(d.chr + 1) + "\t" + to_string(d.start) + "\t" + "-" + "\t" + to_string(d.chr + 1) + "\t" + to_string(d.end) + "\t" + "+" + "\t" + extra + "\n";
           fout << line;       
       }
 
       for(auto d: dels){
-          string extra = "DEL";
+          string extra = "DELREAL";
           string line = to_string(d.chr + 1) + "\t" + to_string(d.start) + "\t" + "+" + "\t" + to_string(d.chr + 1) + "\t" + to_string(d.end) + "\t" + "-" + "\t" + extra + "\n";
           fout << line;       
       }

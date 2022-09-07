@@ -925,6 +925,12 @@ public:
   void generate_dsb(int n_dsb, int verbose = 0){
     // group breakpoints by haplotype and chr for sorting
     // get_breakpoint_map();
+    if(n_dsb <= 0){
+      if(verbose > 1){
+        cout << "NO DSBs in this cycle!" << endl;
+      }      
+      return;
+    }
     gsl_ran_discrete_t* dis_loc = gsl_ran_discrete_preproc(NUM_CHR, CHR_PROBS);
     int jid = breakpoints.rbegin()->first + 1;
     int aid = adjacencies.rbegin()->first + 1;
@@ -1030,11 +1036,11 @@ public:
         j1->right_jid = j2->id;
         j2->left_jid = j1->id;
         // DEL (deletion-like; +/-), intervals also need to have CN < 2, updated later
-        sv_type = DELLIKE;
+        sv_type = DEL;
         // interval in the reference genome is lost
         // || j1->haplotype != j2->haplotype, ignore haplotype as it is hard to determine from real data
         if(j1->chr != j2->chr){
-          sv_type = TRA;
+          sv_type = BND;
         }else{
         }
       }else if(j1->side == HEAD && j2->side == HEAD){ //h2hINV
@@ -1045,7 +1051,7 @@ public:
         // h2hINV (head-to-head inversion; +/+)
         sv_type = H2HINV;
         if(j1->chr != j2->chr){
-          sv_type = TRA;
+          sv_type = BND;
         }else{
         }
       }else if(j1->side == TAIL && j2->side == HEAD){
@@ -1055,10 +1061,10 @@ public:
         j2->right_jid = j1->id;
         // DUP (tandom duplication-like; -/+), intervals also need to have CN > 2, updated later
         // if(is_interval_overlap(j1, j2)){
-        sv_type = DUPLIKE;
+        sv_type = DUP;
         // }        
         if(j1->chr != j2->chr){
-          sv_type = TRA;
+          sv_type = BND;
         }
       }else{  //if(j1->side == TAIL && j2->side == TAIL)
         assert(j1->right_jid >= 0);
@@ -1068,7 +1074,7 @@ public:
         // t2tINV (tail-to-tail inversion; -/-)
         sv_type = T2TINV;
         if(j1->chr != j2->chr){
-          sv_type = TRA;
+          sv_type = BND;
         }else{
         }
       }
@@ -1120,7 +1126,7 @@ public:
       }
 
       if(verbose > 0){
-        cout << "   connecting " << j1->chr + 1 << ":" << get_haplotype_string(j1->haplotype) << ":" << j1->pos << get_side_string(j1->side) << " with " << j2->chr + 1 << ":" << get_haplotype_string(j2->haplotype) << ":" << j2->pos << get_side_string(j2->side) << endl;
+        cout << "   connecting breakpoint " << j1->chr + 1 << ":" << get_haplotype_string(j1->haplotype) << ":" << j1->pos << get_side_string(j1->side) << " with " << j2->chr + 1 << ":" << get_haplotype_string(j2->haplotype) << ":" << j2->pos << get_side_string(j2->side) << endl;
       }
 
       // each breakpoint node should has degree 2
