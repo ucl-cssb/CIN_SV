@@ -25,13 +25,9 @@ int main(int argc, char const *argv[]){
     // string target_chrs;
     string fchr_prob;
     string fchr;
-    int mean_local_frag;  // mean number of breakpoints introduced by local fragmentation during mitosis
+    int n_local_frag;  // mean number of breakpoints introduced by local fragmentation during mitosis
     double frac_unrepaired_local;
     int div_break;   // ID of division when DSBs occurs
-
-    double leap_size;
-
-    string n_cells; // number of samples to take at each side
 
     double birth_rate, death_rate;
 
@@ -40,10 +36,9 @@ int main(int argc, char const *argv[]){
     double fitness;
     int genotype_diff;
     int growth_type;
-    int norm_by_bin;
 
     string outdir, suffix; // output
-    int write_shatterseek, write_circos, write_sumstats, write_genome;
+    int write_shatterseek, write_rck, write_sumstats, write_genome;
     int write_sumstats_only;
 
     unsigned long seed;
@@ -68,13 +63,13 @@ int main(int argc, char const *argv[]){
       ("min_dsb", po::value<int>(&min_dsb)->default_value(0), "minimal number of double strand breaks")
       ("max_dsb", po::value<int>(&max_dsb)->default_value(40), "maximal number of double strand breaks")
       ("n_dsb", po::value<int>(&n_dsb)->default_value(20), "number of double strand breaks introduced in G1")
-      ("frac_unrepaired", po::value<double>(&frac_unrepaired)->default_value(0), "number of unrepaired double strand breaks in the cell, default: all breaks are repaired")
-      ("mean_local_frag", po::value<int>(&mean_local_frag)->default_value(0), "mean number of breakpoints introduced by local fragmentation during mitosis")
+      ("frac_unrepaired", po::value<double>(&frac_unrepaired)->default_value(0), "fraction of unrepaired double strand breaks in G1, default: all breaks are repaired")
+      ("n_local_frag", po::value<int>(&n_local_frag)->default_value(0), "mean number of double strand breaks introduced by local fragmentation during mitosis")
       ("frac_unrepaired_local", po::value<double>(&frac_unrepaired_local)->default_value(1), "number of unrepaired double strand breaks in local fragmentation during mitosis, default: all breaks are not repaired")
-      ("chr_prob", po::value<int>(&chr_prob)->default_value(0), "the probability of double strand breaks across chromosomes. 0: random; 1: biased; 2: fixed")
+      ("chr_prob", po::value<int>(&chr_prob)->default_value(0), "the types of assigning probability of double strand breaks across chromosomes. 0: random; 1: biased; 2: fixed")
       ("circular_prob", po::value<double>(&circular_prob)->default_value(0), "the probability of a frament without centromere and telomeres forming circular DNA (ecDNA)")
       // ("target_chrs", po::value<string>(&target_chrs)->default_value(""), "biased chromosomes to introduce breaks, total number followed by ID of each chromosome")
-      ("fchr_prob", po::value<string>(&fchr_prob)->default_value(""), "file containing the probability of breaks on each chromosome")
+      ("fchr_prob", po::value<string>(&fchr_prob)->default_value(""), "the file containing the probability of double strand breaks on each chromosome")
 
       ("birth_rate,b", po::value<double>(&birth_rate)->default_value(1), "birth rate")
       ("death_rate,d", po::value<double>(&death_rate)->default_value(0), "death rate")
@@ -91,15 +86,14 @@ int main(int argc, char const *argv[]){
       ("model", po::value<int>(&model_ID)->default_value(0), "model of evolution. 0: neutral; 1: selection")
       ("use_alpha", po::value<int>(&use_alpha)->default_value(1), "whether or not to use alpha in selection model. 0: use selection coefficient; 1: use alpha")
       ("fitness,f", po::value<double>(&fitness)->default_value(0), "fitness values of mutatants")
-      ("genotype_diff", po::value<int>(&genotype_diff)->default_value(3), "type of karyotype difference (L1 distance) in simulating selection. 0: no; 1: L1 distance of CN; 2: Hamming distance of CN; 3: number of new mutations")
-      ("norm_by_bin", po::value<int>(&norm_by_bin)->default_value(0), "whether or not to normalize karyotype difference by number of bins (segments) in the genome. 0: no; 1: yes")
+      ("genotype_diff", po::value<int>(&genotype_diff)->default_value(0), "type of karyotype difference to measure selection (not implemented yet)")
       ("growth_type,t", po::value<int>(&growth_type)->default_value(0), "Type of growth when adding selection. 0: only birth; 1: change birth rate; 2: change death rate; 3: change both birth or death rate")
 
       // options related to summary statistics
 
       // options related to output
       ("suffix", po::value<string>(&suffix)->default_value(""), "suffix of output file")
-      ("write_circos", po::value<int>(&write_circos)->default_value(0), "whether or not to write files for circos plot")
+      ("write_rck", po::value<int>(&write_rck)->default_value(0), "whether or not to write files in RCCK format")
       ("write_shatterseek", po::value<int>(&write_shatterseek)->default_value(0), "whether or not to write files for shatterseek")
       ("write_sumstats", po::value<int>(&write_sumstats)->default_value(1), "whether or not to write summary statistics")
       ("write_genome", po::value<int>(&write_genome)->default_value(0), "whether or not to write derivative genome")
@@ -131,7 +125,6 @@ int main(int argc, char const *argv[]){
     }
 
     unsigned long rseed = setup_rng(seed);
-
     if(verbose > 0) cout << "Random seed: " << rseed << endl;
 
     // cout << "Using Boost "
@@ -162,7 +155,7 @@ int main(int argc, char const *argv[]){
     Clone* s = new Clone(1, 0);
     
     if(verbose > 0) cout << "Start cell growth with " << n_unrepaired << " unrepaired DSBs" << endl;
-    s->grow_with_dsb(start_cell, start_model, n_cell, frac_unrepaired, mean_local_frag, frac_unrepaired_local, circular_prob, track_all, verbose);
+    s->grow_with_dsb(start_cell, start_model, n_cell, frac_unrepaired, n_local_frag, frac_unrepaired_local, circular_prob, track_all, verbose);
     if(verbose > 0) cout << "\nFinish cell growth " << endl;
 
     vector<Cell_ptr> final_cells;
@@ -183,6 +176,11 @@ int main(int argc, char const *argv[]){
       cell->g->get_bps_per_chr(bps_by_chr, verbose);
     }
 
+    if(outdir != "./"){
+      boost::filesystem::path dir(outdir);
+      boost::filesystem::create_directories(dir);
+    }
+
     string filetype = ".tsv";
     if(write_sumstats){
       // write summary statistics in the simulation
@@ -197,7 +195,7 @@ int main(int argc, char const *argv[]){
     for(auto cell : final_cells){
       // verbose = 1;
       if(verbose > 0){
-        cout << "Cell " << cell->cell_ID << endl;
+        cout << "\nCell " << cell->cell_ID << endl;
       }
       // cell->print_bp_adj();
       // merge segments with the same CN by haplotype
@@ -208,9 +206,10 @@ int main(int argc, char const *argv[]){
       // seems not necessary as the breakpoints can be telled from copy number segments
       // cell->g->get_pseudo_adjacency(dups, dels, verbose);
 
-      // compute and print summary statistics
+      // compute and print summary statistics, used for ABC
       cell->print_total_summary(dups, dels, verbose);
 
+      // write summary statistics for each cell
       if(write_sumstats){
         if(verbose > 0) cout << "\nWrite output for summary statistics" << endl;
 
@@ -220,35 +219,35 @@ int main(int argc, char const *argv[]){
         cell->write_summary_stats(fname_stat, fname_stat_chr);
       }
 
-      if(write_circos){
-        if(verbose > 0) cout << "\nWrite output for circos plot" << endl;
-        string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
-        string fname_cn = outdir +"/" + "cn_data_c" + midfix + filetype;
-        cell->write_cnv(fname_cn);        
-        string fname_sv = outdir +"/" + "sv_data_c" + midfix + filetype;
-        cell->write_sv(fname_sv, dups, dels, verbose);
+      if(write_rck){
+        //  and circos plot
+        if(verbose > 0) cout << "\nWrite output for RCK graph" << endl;
+        string subdir = outdir + "/" +  "c" + to_string(cell->cell_ID);
+        boost::filesystem::path dir(subdir);
+        boost::filesystem::create_directory(dir);
+        string fname_cn = subdir + "/" + "rck.scnt.tsv";      
+        string fname_sv = subdir + "/" + "rck.acnt.tsv";
+        cell->write_rck(fname_cn, fname_sv, dups, dels, verbose);
       }
 
       // write CN and SV data to tsv - for ShatterSeek
       if(write_shatterseek){
         if(verbose > 0) cout << "\nWrite output for ShatterSeek" << endl;
         string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
-        string fname_sv_ss = outdir +"/" + "SVData_c" + midfix + filetype;
-        string fname_cn_ss = outdir +"/" + "CNData_c" + midfix + filetype;
-        cell->write_shatterseek(fname_sv_ss, fname_cn_ss, dups, dels, verbose);
+        string fname_sv_ss = outdir + "/" + "SVData_c" + midfix + filetype;
+        string fname_cn_ss = outdir + "/" + "CNData_c" + midfix + filetype;
+        cell->write_shatterseek(fname_cn_ss, fname_sv_ss, dups, dels, verbose);
       }
 
       if(write_genome){
-        if(verbose > 0) cout << "Write output for the derivative genome" << endl;
+        if(verbose > 0) cout << "\nWrite output for the derivative genome" << endl;
         string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
         string fname = outdir +"/" + "genome_c" + midfix + filetype;
         cell->write_genome(fname);
       }
-
     }      
     
     if(verbose > 0) s->print_all_cells(final_cells, verbose);
-
 
     delete s;
     gsl_rng_free(r);

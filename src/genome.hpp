@@ -13,6 +13,7 @@ using namespace std;
 #include "util.hpp"
 
 
+// A genomic position
 struct pos_cn{
   int chr;
   int start;
@@ -21,6 +22,34 @@ struct pos_cn{
   int cnB;
 };
 
+
+struct adj_pos{
+  int chr1;
+  int pos1;
+  int strand1;
+  int chr2;
+  int pos2;
+  int strand2;
+  string type;
+
+  bool operator<(adj_pos const &other) const {
+    return (chr1 < other.chr1 ||
+      (chr1 == other.chr1 && pos1 < other.pos1));
+  }
+
+}; 
+
+
+struct adj_cn{
+  // string aid;    // assign id when printing
+  int cnAA;
+  int cnAB;
+  int cnBA;
+  int cnBB;
+};
+
+
+// A genomic region on a certain haplotype of a chromosome, excluding chromosome information
 struct interval{
   int start;
   int end;
@@ -35,6 +64,7 @@ struct interval{
 };
 
 
+// A haplotype-specific genomic region
 struct haplotype_pos{
   int chr;
   int haplotype;
@@ -529,6 +559,8 @@ public:
   map<pair<int, int>, vector<interval>>  cn_by_chr_hap_merged;
   map<int, vector<segment*>> chr_segments;     // group segments by chr 
 
+  map<adj_pos, adj_cn> adjacency_CNs;   // group adjacencies by location 
+
   // number of DSBs on each chr each haplotype
   // vector<int> vec_n_dsb;   // hard to maintain across cell divisions due to random path distributions
   // breaks introduced due to multiple centromeres during mitosis
@@ -580,7 +612,7 @@ public:
       // two breakpoints are generated
       int haplotype = 0;
       // int cell_ID, int id, int chr, int pos, int side, int haplotype, bool is_end, bool is_repaired
-      breakpoint* j1 = new breakpoint(cell_ID, jid++, chr, 0, TAIL, haplotype, is_end, is_repaired);
+      breakpoint* j1 = new breakpoint(cell_ID, jid++, chr, 1, TAIL, haplotype, is_end, is_repaired);
       breakpoint* j2 = new breakpoint(cell_ID, jid++, chr, CHR_LENGTHS[chr], HEAD, haplotype, is_end, is_repaired);
       j1->right_jid = j2->id;
       j2->left_jid = j1->id;
@@ -600,7 +632,7 @@ public:
       paths[p->id] = p;
 
       haplotype = 1;
-      breakpoint* j3 = new breakpoint(cell_ID, jid++, chr, 0, TAIL, haplotype, is_end, is_repaired);
+      breakpoint* j3 = new breakpoint(cell_ID, jid++, chr, 1, TAIL, haplotype, is_end, is_repaired);
       breakpoint* j4 = new breakpoint(cell_ID, jid++, chr, CHR_LENGTHS[chr], HEAD, haplotype, is_end, is_repaired);
       j3->right_jid = j4->id;
       j4->left_jid = j3->id;
@@ -834,9 +866,9 @@ public:
     // a new breakpoint will generate two new segment j1, j2
     // (j1, j2) still unconnected, need to be repaired
     bool is_repaired = false;
-    // two breakpoints at the same position are generated, with different sides (orientation)
+    // two breakpoints at the same? position are generated, with different sides (orientation)
     breakpoint* j1 = new breakpoint(cell_ID, jid++, chr, bp, HEAD, haplotype, is_end, is_repaired);
-    breakpoint* j2 = new breakpoint(cell_ID, jid++, chr, bp, TAIL, haplotype, is_end, is_repaired);
+    breakpoint* j2 = new breakpoint(cell_ID, jid++, chr, bp + 1, TAIL, haplotype, is_end, is_repaired);
     // only connect DSBs later in the repair stage
     j1->right_jid = -1;
     j2->left_jid = -1;
@@ -1154,7 +1186,7 @@ public:
 
       SV_type sv_type = NONE;
       // determine direction by breakpoint side
-      if(j1->chr == j2->chr && j1->pos == j2->pos && j1->haplotype == j2->haplotype && j1->side != j2->side){
+      if(j1->chr == j2->chr && abs(j1->pos - j2->pos) == 1 && j1->haplotype == j2->haplotype && j1->side != j2->side){
         // reference adjacency (should be rare)
         adj = new adjacency(cell_ID, aid++, -1, j1->id, j2->id, REF, NONTEL, NONE);
         adj->set_telomeric_type(breakpoints);
@@ -1601,7 +1633,7 @@ public:
         cout << "path after validation\n";
         p->print();
       }      
-      paths[p->id] = p;
+      paths[p->id] = p; 
     }
 
     if(verbose > 1){
@@ -2101,7 +2133,8 @@ void get_merged_interval(int verbose = 0){
         interval intl_curr = intls[i];
         if(verbose > 1) cout << "interval " << i + 1 << "\t" << intl_curr.start << "\t" << intl_curr.end << "\t" << intl_curr.cn << endl;
 
-        if(intl_prev.end == intl_curr.start && intl_prev.cn == intl_curr.cn){
+        // no intervals with the same position
+        if(intl_prev.end + 1 == intl_curr.start && intl_prev.cn == intl_curr.cn){
           interval intl_merged{intl_prev.start, intl_curr.end, intl_prev.cn};
           if(verbose > 1) cout << "interval after merging with previous one\t" << intl_merged.start << "\t" << intl_merged.end << "\t" << intl_merged.cn << endl;
           cn_by_chr_hap_merged[cnp.first].pop_back();
@@ -2187,8 +2220,12 @@ void get_merged_interval(int verbose = 0){
       set<int>::iterator it = bps.begin();
       int pos1 = *it;
       it++;
-      for (; it != bps.end(); it++){
+      for(; it != bps.end(); it++){
         int pos2 = *it;
+        if(abs(pos1 - pos2) == 1){  // consecutive breakpoints
+          pos1 = pos2;
+          continue;  
+        }
         pair<int, int> intl(pos1, pos2);
         intls.push_back(intl);
         pos1 = pos2;
@@ -2200,10 +2237,10 @@ void get_merged_interval(int verbose = 0){
           cout << " (" << intl.first << "," << intl.second << ")";
         }
         cout << endl;
-      }
 
-      // find cns for each interval in each haplotype
-      if(verbose > 1) cout << "CNs for haplotype A" << endl;
+        // find cns for each interval in each haplotype
+        cout << "CNs for haplotype A" << endl;
+      }
       map<pair<int, int>, int> cn_A;
       pair<int, int> key(chr, 0);
       vector<interval> cnsA = cn_by_chr_hap_merged[key];
@@ -2321,6 +2358,74 @@ void get_merged_interval(int verbose = 0){
       if(dels_pos.size() > 0){
         get_merged_svs(dels_pos, merged_dels_pos, verbose);
       }      
+    }
+
+
+    void update_adj_cn(int hap1, int hap2, adj_cn& ac){
+        if(hap1 == 0 && hap2 == 0){
+          ac.cnAA++;
+        }else if(hap1 == 0 && hap2 == 1){
+          ac.cnAB++;
+        }else if(hap1 == 1 && hap2 == 0){
+          ac.cnBA++;
+        }else{
+          assert(hap1 == 1 && hap2 == 1);
+          ac.cnBB++;
+        }
+    }
+
+
+    // Get adjacency haplotype-specific CNs for AA, AB, BA, BB
+    void get_adjacency_CN(){      
+      string at = "";
+      for(auto p: paths){
+        for(auto e : p.second->edges){
+          // cout << "\nedge " << e << endl;
+          adjacency *adj = adjacencies[e];
+
+          if(adj->type == 0){ // 0: interval, 1: reference, 2: variant
+            continue;
+          }
+          
+          // https://github.com/aganezov/RCK/blob/master/docs/Adjacencies.md
+          if(adj->type == 1){
+            at = "R";  // reference
+          }else{
+            at = "N"; // novel
+          }
+
+          // adj->print();
+          breakpoint *j1 = breakpoints[adj->junc_id1];
+          breakpoint *j2 = breakpoints[adj->junc_id2];
+          // make sure adjacencies connecting the same two positions are grouped together
+          // hard to compare positions by both chr and pos, assume is_inverted is correct
+          if(adj->is_inverted){
+            j1 = breakpoints[adj->junc_id2];
+            j2 = breakpoints[adj->junc_id1];
+          }
+
+          // 0: A, 1: B
+          int hap1 = j1->haplotype;
+          int hap2 = j2->haplotype;
+
+          adj_pos ap{j1->chr, j1->pos, j1->side, j2->chr, j2->pos, j2->side, at};
+
+          if(adjacency_CNs.count(ap) > 0){
+            adj_cn ac = adjacency_CNs[ap];
+            // update CN
+            update_adj_cn(hap1, hap2, ac);
+            adjacency_CNs[ap] = ac;
+          }else{
+            int cnAA = 0;
+            int cnAB = 0;
+            int cnBA = 0; 
+            int cnBB = 0;
+            adj_cn ac{cnAA, cnAB, cnBA, cnBB};
+            update_adj_cn(hap1, hap2, ac);
+            adjacency_CNs[ap] = ac;
+          }
+        }
+      }
     }
 
 };

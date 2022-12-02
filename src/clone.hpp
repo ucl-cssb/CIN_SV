@@ -27,16 +27,14 @@ struct node {
     node* right;
     int flag; // whether the node is available (dead) or not
 
-    node(int data)
-    {
+    node(int data){
         this->data = data;
         this->flag = 0;
         left = NULL;
         right = NULL;
     }
 
-    node(int data, int flag)
-    {
+    node(int data, int flag){
         this->data = data;
         this->flag = flag;
         left = NULL;
@@ -45,8 +43,7 @@ struct node {
 };
 
 
-node* search_node(int key, node* p)
-{
+node* search_node(int key, node* p){
     // cout << "search node " << key << endl;
     if(p == NULL) return NULL;
 
@@ -139,8 +136,7 @@ public:
 /*
 A Clone represents a population of cells
 */
-class Clone
-{
+class Clone{
 public:
     int clone_ID;
     string name;

@@ -1,12 +1,14 @@
+#!/usr/bin/env Rscript
+
 # Get reference centromere and telomere positions
 
-fname = "../data/reference/cytoBand_hg38.txt"
-fout = "../data/hg38_size.tsv"
+fname = "../data/cytoBand_hg38.txt"
+fout = "../data/ref_size.tsv"
 
 # convert into "chr length boundary (centromere)"
-hg38 = read.table(fname, header = F)
-names(hg38) <- c("chrom","start","end","cytoband", "stain")
-unique(hg38$stain)
+ref = read.table(fname, header = F)
+names(ref) <- c("chrom","start","end","cytoband", "stain")
+unique(ref$stain)
 
 
 get_cyto_band <- function(fcyto){
@@ -83,8 +85,32 @@ get_cyto_band <- function(fcyto){
   return(chr_cent_telo)
 }
 
-fcyto = fname
-hg38_size = get_cyto_band(fname)
 
-hg38_size %>% filter(chrom != 'X') %>% filter(chrom != 'Y') %>% arrange(as.numeric(chrom)) -> hg38_sel
-write_tsv(hg38_sel, fout)
+get_fragile_sites <- function(dir){
+  files = list.files(dir, "gff3")
+  pos_all = data.frame()
+  for(i in 1:length(files)){
+    # i = 23
+    # print(i)
+    fname = files[i]
+    if(grepl("chrx", fname)) next
+    # print(fname)
+    fpath = file.path(dir, fname)
+    pos = read.gff(fpath)
+    pos_all = rbind(pos_all, pos)
+  }
+  pos_all %>% select(chrom = seqid, start, end, attributes) %>% mutate(chrom = str_replace(chrom, "chr", "")) %>% arrange(as.integer(chrom)) -> pos_sel
+  return(pos_sel)
+}
+
+fcyto = fname
+ref_size = get_cyto_band(fname)
+
+ref_size %>% filter(chrom != 'X') %>% filter(chrom != 'Y') %>% arrange(as.numeric(chrom)) -> ref_sel
+write_tsv(ref_sel, fout)
+
+
+dir = "d:/data/SV/humcfs_fragile.gff3"
+fs_autosome = get_fragile_sites(dir) 
+fout = "D:/Gdrive/git/CIN_SV/data/fragile_sites.tsv"
+write_tsv(fs_autosome, fout)

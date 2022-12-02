@@ -657,8 +657,9 @@ public:
  
     // new_bps: new breakpoints introduced during fragmentation after repairing
     // for simplification, assume all breakpoints are not repaired in mitosis
-    bool path_local_fragmentation(path* p, int mean_local_frag, double frac_unrepaired, vector<breakpoint*>& new_bps, int verbose = 0){
-        int nbreak = gsl_ran_poisson(r, mean_local_frag);   // expected number of breaks
+    bool path_local_fragmentation(path* p, int n_local_frag, double frac_unrepaired, vector<breakpoint*>& new_bps, int verbose = 0){
+        int nbreak = gsl_ran_poisson(r, n_local_frag);   // expected number of breaks, more reasonable with different number of breaks
+        // int nbreak = n_local_frag;
         int nbreak_succ = 0; // real number of breaks
         if(verbose > 1){
           cout << "Fragmentize path " << p->id + 1 << " in cell " << cell_ID << endl;
@@ -690,8 +691,8 @@ public:
             pe = p1;
           }
           if(e->type == INTERVAL){
-            double u2 = runiform(r, 0, 1);
-            if(u2 < 0.5){  // break this edge
+            // double u2 = runiform(r, 0, 1);
+            // if(u2 < 0.5){  // break this edge
                 if(verbose > 1){
                   cout << "break on edge " << e->id << endl;
                   g->breakpoints[e->junc_id1]->print();
@@ -760,7 +761,7 @@ public:
                 p->edges.erase(p->edges.begin() + eid);
                 p->edges.push_back(aid - 2);
                 p->edges.push_back(aid - 1);
-            }
+            // }
           }
         }
 
@@ -782,12 +783,12 @@ public:
       }
 
 
-    void split_path_from_bp(int& pid, breakpoint* js, int mean_local_frag, double frac_unrepaired, double circular_prob, Cell_ptr dcell1, Cell_ptr dcell2, int verbose = 0){
+    void split_path_from_bp(int& pid, breakpoint* js, int n_local_frag, double frac_unrepaired, double circular_prob, Cell_ptr dcell1, Cell_ptr dcell2, int verbose = 0){
         //  each path will have a unique ID
         path* p = new path(++pid, this->cell_ID, COMPLETE);
         get_path_from_bp(p, js, frac_unrepaired, circular_prob, verbose);
 
-        if(mean_local_frag == 0){
+        if(n_local_frag == 0){
           if(verbose > 1){
             cout << "\nThe new path has one centromere after simple break" << endl;
           }
@@ -803,7 +804,7 @@ public:
               }
               // p will be broken into new paths
               vector<breakpoint*> new_bps;
-              bool splited = path_local_fragmentation(p, mean_local_frag, frac_unrepaired, new_bps, verbose);
+              bool splited = path_local_fragmentation(p, n_local_frag, frac_unrepaired, new_bps, verbose);
               if(!splited){
                 g->validate_path(p);
                 g->paths[p->id] = p;
@@ -843,7 +844,7 @@ public:
     // choose breakpoint location so that each path contains one centromere, introduce new breakpoints and form connections
     // assume the path has 2 telomeres at the ends
     // p2split will be split into n_centromere paths, which are distributed randomly
-    void segregate_polycentric(path* p2split, Cell_ptr dcell1, Cell_ptr dcell2, int& pid, int mean_local_frag, double frac_unrepaired, double circular_prob, int verbose = 0){
+    void segregate_polycentric(path* p2split, Cell_ptr dcell1, Cell_ptr dcell2, int& pid, int n_local_frag, double frac_unrepaired, double circular_prob, int verbose = 0){
       // verbose = 2;
       if(verbose > 0){
         cout << "\nbreaking a complex path with >1 centromeres" << endl;
@@ -902,7 +903,7 @@ public:
           cout << "\nspliting path starting from breakpoint " << jid << endl;
           g->breakpoints[jid]->print();
         }
-        split_path_from_bp(pid, g->breakpoints[jid], mean_local_frag, frac_unrepaired, circular_prob, dcell1, dcell2, verbose);
+        split_path_from_bp(pid, g->breakpoints[jid], n_local_frag, frac_unrepaired, circular_prob, dcell1, dcell2, verbose);
       }
 
     }
@@ -1028,7 +1029,7 @@ public:
 
 
     // randomly distribute between daughter cells, depend on #centromeres
-    void mitosis(Cell_ptr dcell1, Cell_ptr dcell2, int&  n_complex_path, int& n_path_break, int mean_local_frag, double frac_unrepaired, double circular_prob, int verbose = 0){
+    void mitosis(Cell_ptr dcell1, Cell_ptr dcell2, int&  n_complex_path, int& n_path_break, int n_local_frag, double frac_unrepaired, double circular_prob, int verbose = 0){
       // verbose = 2;
       if(verbose > 1){
         cout << g->paths.size() << " paths before split (may include duplicated path distributed to daughter cells)" << endl;
@@ -1077,7 +1078,7 @@ public:
           if(verbose > 1) cout << "\ncomplex distribution of path " << p->id + 1 << endl;
           n_complex_path += 1;
           n_path_break += p->n_centromere - 1; 
-          segregate_polycentric(p, dcell1, dcell2, max_pID, mean_local_frag, frac_unrepaired, circular_prob, verbose);
+          segregate_polycentric(p, dcell1, dcell2, max_pID, n_local_frag, frac_unrepaired, circular_prob, verbose);
           if(verbose > 1) cout << "\nFinish complex splitting\n" << endl;
         }
       }
@@ -1101,7 +1102,7 @@ public:
         vector<int> tcns;
         vector<int> tdiff;
         int nseg = g->chr_segments[chr].size();
-        if(verbose > 0) cout << chr << "\t" << nseg << endl;
+        if(verbose > 1) cout << chr << "\t" << nseg << endl;
         if(nseg == 0){
           chr_n_osc2[chr] = 0;
           chr_n_osc3[chr] = 0;
@@ -1131,7 +1132,7 @@ public:
           }else{
 
           }
-          if(verbose > 0) cout << dcn << "\t" << v2_states[i] << "\t" << v3_states[i] << endl;
+          if(verbose > 1) cout << dcn << "\t" << v2_states[i] << "\t" << v3_states[i] << endl;
         }
 
         int n_osc2 = find_max_size(1, v2_states) + 2;
@@ -1319,7 +1320,7 @@ public:
     // a whole cycle of cell division
     // duplication and repair of its genome
     // Path IDs are reencoded in the next cell cylce
-    void do_cell_cycle(Cell_ptr dcell1, Cell_ptr dcell2, double frac_unrepaired, int& n_telo_fusion, int& n_complex_path, int& n_path_break, int mean_local_frag, double frac_unrepaired_local, double circular_prob, int verbose = 0){
+    void do_cell_cycle(Cell_ptr dcell1, Cell_ptr dcell2, double frac_unrepaired, int& n_telo_fusion, int& n_complex_path, int& n_path_break, int n_local_frag, double frac_unrepaired_local, double circular_prob, int verbose = 0){
       // verbose = 2;
       // introduces DSBs into the genome prior to G1 repairs
       if(verbose > 1){
@@ -1331,7 +1332,7 @@ public:
       if(div_occur > div_break){
         if(verbose > 1) cout << "No new breaks in division " << div_occur << " in cell " << cell_ID << endl;
         n_dsb = 0;
-        mean_local_frag = 0;
+        n_local_frag = 0;
       }
       g1(frac_unrepaired, circular_prob, verbose);
 
@@ -1339,7 +1340,7 @@ public:
       sphase_g2(n_telo_fusion, verbose);
 
       if(verbose > 0) cout << "\nMitosis phase" << endl;
-      mitosis(dcell1, dcell2, n_complex_path, n_path_break, mean_local_frag, frac_unrepaired_local, circular_prob, verbose);
+      mitosis(dcell1, dcell2, n_complex_path, n_path_break, n_local_frag, frac_unrepaired_local, circular_prob, verbose);
 
       if(verbose > 2){
         cout << "\nnumber of DSBs in G1: " << n_dsb << endl;
@@ -1358,29 +1359,53 @@ public:
     }
 
 
+    /***********************************  below are functions related to output  ***********************************/
 
-    //  below are functions related to output  
-  
     // Follow format of RCK output
-    // "chr1", "coord1", "strand1", "chr2", "coord2", "strand2",	"extra"
-    void write_sv(string fname, const vector<pos_cn>& dups, const vector<pos_cn>& dels, int verbose = 0){
-      // string fname = "sv_data.tsv"
-      ofstream fout(fname);
-      string header = "chr1\tcoord1\tstrand1\tchr2\tcoord2\tstrand2\textra\n";
-      fout << header;
+    // CN: "chr", "start", "end", "extra"
+    // SV: "chr1", "coord1", "strand1", "chr2", "coord2", "strand2",	"extra"
+    void write_rck(string fname_cn, string fname_sv, const vector<pos_cn>& dups, const vector<pos_cn>& dels, int verbose = 0){
+      ofstream fout_cn(fname_cn);
+      string header = "chr\tstart\tend\textra\n";
+      fout_cn << header;
 
-      for(auto adjm : g->adjacencies){
-        adjacency* adj = adjm.second;
-        if(adj->sv_type == NONE) continue;
-       
-        string extra = "sv_type=" + get_sv_type_string(adj->sv_type);
-        // int cn_AA = 0;
-        // int cn_AB = 0;
-        // int cn_BA = 0;
-        // int cn_BB = 0;
-        // string cn = "cn={'c1':{'AA': " + to_string(cn_AA) + "'AB': "+ to_string(cn_AB) + ", 'BA':" + to_string(cn_BA) + ", 'BB':" + to_string(cn_BB) + "}";
-        // type = type + ";" + cn;
-        string line = g->get_sv_string(adj, extra);
+      for(auto sg : g->chr_segments){
+        for(auto s : sg.second){
+          // s->print();
+          // use cn1 to be consistent with patterns in Jabba
+          string extra = "cn={'c1': {'A': " + to_string(s->cnA) + ", 'B': " + to_string(s->cnB) + "}}";
+          // [) interval to avoid manual overlapping
+          string line = to_string(s->chr + 1) + "\t" + to_string(s->start) + "\t" + to_string(s->end) + "\t" + extra + "\n";
+          fout_cn << line;
+        }
+      }
+      fout_cn.close();
+
+      ofstream fout(fname_sv);
+      header = "aid\tchr1\tcoord1\tstrand1\tchr2\tcoord2\tstrand2\textra\n";
+      fout << header;
+      g->get_adjacency_CN();
+      int id_alt = 0;
+      int id_ref = 0;
+      string idx = "";
+      for(auto adjm : g->adjacency_CNs){
+        adj_pos ap = adjm.first;
+        adj_cn ac = adjm.second;
+        
+        if(ap.type == "R"){
+          id_ref++;
+          idx = ap.type + to_string(id_ref);
+        }else{
+          id_alt++;
+          idx = to_string(id_alt);
+        }
+
+        int cn_AA = ac.cnAA;
+        int cn_AB = ac.cnAB;
+        int cn_BA = ac.cnBA;
+        int cn_BB = ac.cnBB;
+        string extra = "aid=" + (idx) + ";cn={'c1': {'AA': " + to_string(cn_AA) + ", 'AB': "+ to_string(cn_AB) + ", 'BA': " + to_string(cn_BA) + ", 'BB': " + to_string(cn_BB) + "}};at=" + ap.type;
+        string line = (idx) + "\t" + to_string(ap.chr1 + 1) + "\t" + to_string(ap.pos1) + "\t" + get_side_string(ap.strand1) + "\t" + to_string(ap.chr2 + 1) + "\t" + to_string(ap.pos2) + "\t" + get_side_string(ap.strand2) + "\t" + extra + "\n";
         fout << line;
       }
 
@@ -1412,27 +1437,6 @@ public:
 
       fout.close();
     }
-
-
-    // "chr", "start", "end", "extra"
-    void write_cnv(string fname){
-      // string fname = "cn_data.tsv"
-      ofstream fout(fname);
-      string header = "chr\tstart\tend\textra\n";
-      fout << header;
-
-      for(auto sg : g->chr_segments){
-        for(auto s : sg.second){
-          // s->print();
-          string extra = "cn={'1': {'A': " + to_string(s->cnA) + ", 'B': " + to_string(s->cnB) + "}}";
-          string line = to_string(s->chr + 1) + "\t" + to_string(s->start) + "\t" + to_string(s->end) + "\t" + extra + "\n";
-          fout << line;
-        }
-      }
-
-      fout.close();
-    }
-
 
     // output in a way to facilitate understanding of CN and SV data
     void write_genome(string fname){
@@ -1497,17 +1501,31 @@ public:
     //   }
     //   fout_chr.close();
 
-    //   string line = to_string(div_occur) + "\t" + to_string(n_dsb) + "\t" + to_string(n_del) + "\t" + to_string(n_dup) + "\t" + to_string(n_h2h) + "\t" + to_string(n_t2t)  + "\t" + to_string(n_tra) + "\t" + to_string(n_complex_path) + "\n";
+    //   string line = to_strins->end - 1g(div_occur) + "\t" + to_string(n_dsb) + "\t" + to_string(n_del) + "\t" + to_string(n_dup) + "\t" + to_string(n_h2h) + "\t" + to_string(n_t2t)  + "\t" + to_string(n_tra) + "\t" + to_string(n_complex_path) + "\n";
     //   fout << line;
     //   fout.close();
     // }
 
 
     // SVtype (character): type of SV, encoded as: DEL (deletion-like; +/-), DUP (duplication-like; -/+), h2hINV (head-to-head inversion; +/+), and t2tINV (tail-to-tail inversion; -/-).
-    void write_shatterseek(string fname_sv, string fname_cn, const vector<pos_cn>& dups, const vector<pos_cn>& dels, int verbose = 0){
+    void write_shatterseek(string fname_cn, string fname_sv, const vector<pos_cn>& dups, const vector<pos_cn>& dels, int verbose = 0){
+      // "chromosome", "start", "end", "total_cn"
+      ofstream fout_cn(fname_cn);
+      string header = "chromosome\tstart\tend\ttotal_cn\tcnA\tcnB\n";
+      fout_cn << header;
+      for(auto sg : g->chr_segments){
+        for(auto s: sg.second){
+          // s->print();
+          int tcn = s->cnA + s->cnB;
+          string line = to_string(s->chr + 1) + "\t" + to_string(s->start) + "\t" + to_string(s->end) + "\t" + to_string(tcn) + "\t" + to_string(s->cnA) + "\t" + to_string(s->cnB)+ "\n";
+          fout_cn << line;
+        }
+      }
+      fout_cn.close();
+
       // "chrom1", "start1", "strand1", "chrom2", "end2", "strand2", "svclass"
       ofstream fout(fname_sv);
-      string header = "chrom1\tstart1\tstrand1\tchrom2\tend2\tstrand2\tsvclass\n";
+      header = "chrom1\tstart1\tstrand1\tchrom2\tend2\tstrand2\tsvclass\n";
       fout << header;
       for(auto adjm : g->adjacencies){
         adjacency* adj = adjm.second;
@@ -1531,19 +1549,6 @@ public:
 
       fout.close();
 
-      // "chromosome", "start", "end", "total_cn"
-      ofstream fout_cn(fname_cn);
-      header = "chromosome\tstart\tend\ttotal_cn\n";
-      fout_cn << header;
-      for(auto sg : g->chr_segments){
-        for(auto s: sg.second){
-          // s->print();
-          int tcn = s->cnA + s->cnB;
-          string line = to_string(s->chr + 1) + "\t" + to_string(s->start) + "\t" + to_string(s->end) + "\t" + to_string(tcn) + "\n";
-          fout_cn << line;
-        }
-      }
-      fout_cn.close();
     }
 
 

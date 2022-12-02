@@ -1,4 +1,6 @@
-# install
+#!/usr/bin/env Rscript
+
+# install 
 # require(devtools)
 # install_github("parklab/ShatterSeek")
 
@@ -10,10 +12,10 @@ suppressMessages(library(tidyverse))
 suppressMessages(library(ShatterSeek))
 
 
-get_chromothripsis <- function(dir, midfix, to_plot = T) {
+get_chromothripsis <- function(dir, midfix, chr = "1", to_plot = T) {
   fsv <- file.path(dir, paste0("SVData_", midfix, ".tsv"))
   fcn <- file.path(dir, paste0("CNData_", midfix, ".tsv"))
-  fplot <- file.path(dir, paste0("plot_chr1_", midfix, ".pdf"))
+  fplot <- file.path(dir, paste0("plot_chr", chr, "_", midfix, ".pdf"))
 
   SVData_svgen <- read.delim(fsv)
   CNData_svgen <- read.delim(fcn)
@@ -44,7 +46,7 @@ get_chromothripsis <- function(dir, midfix, to_plot = T) {
   print(paste0("Running time (s): ", round(end_time - start_time, digits = 2)))
 
   # Plot chromothripsis per chromosome (not work on ubuntu)
-  plots_chr <- plot_chromothripsis(ShatterSeek_output = chromothripsis, chr = "1", genome = "hg38")
+  plots_chr <- plot_chromothripsis(ShatterSeek_output = chromothripsis, chr = chr, genome = "hg38")
   p <- arrangeGrob(plots_chr[[1]],
     plots_chr[[2]],
     plots_chr[[3]],
@@ -68,7 +70,7 @@ get_chromothripsis <- function(dir, midfix, to_plot = T) {
   # res %>%
   #   t() %>%
   #   View()
-  fout <- file.path(dir, paste0("shatterseek_", midfix, ".tsv"))
+  fout <- file.path(dir, paste0("shatterseek_", midfix, "_chr", chr, ".tsv"))
   write_tsv(res, fout)
   
   return(chromothripsis)
@@ -90,6 +92,10 @@ option_list <- list(
   make_option(c("-c", "--cell_ID"),
     type = "integer", default = 2,
     help = "The ID of the cell [default=%default]", metavar = "number"
+  ),
+  make_option(c("-r", "--chr"),
+              type = "integer", default = 1,
+              help = "The chromosome to examine [default=%default]", metavar = "number"
   )
 )
 opt_parser <- OptionParser(option_list = option_list)
@@ -100,20 +106,21 @@ opt <- parse_args(opt_parser)
 # cell_ID <- 3
 # div_ID <- 1
 #
-# dir = "d:/data/SV/sim/test20220503/nDSB50_nUn0/r1"
-# dir = "/mnt/d/data/SV/sim/test20220503/nDSB50_nUn0/r1"
-# cell_ID = 2
-# div_ID = 1
+# dir = "d:/data/SV/real/HX13/nDSB25_nUn0.1_frag49/r2"
+# cell_ID = 4
+# div_ID = 2
+# chr = 22
 
 dir <- opt$dir
 cell_ID <- opt$cell_ID
 div_ID <- opt$div_ID
+chr <- opt$chr
 
 midfix <- paste0("c", cell_ID, "_div", div_ID)
 
 
 ########## detect chromothripsis
-cm <- get_chromothripsis(dir, midfix)
+cm <- get_chromothripsis(dir, midfix, chr)
 
 
 
