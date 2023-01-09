@@ -16,7 +16,7 @@ using namespace std;
 int main(int argc, char const *argv[]){
     // int n_cycle;
     int n_cell;
-    // double dsb_rate;
+    int dsb_rate;
     int min_dsb, max_dsb;
     int n_dsb;
     double frac_unrepaired;
@@ -59,10 +59,10 @@ int main(int argc, char const *argv[]){
       // ("n_cycle", po::value<int>(&n_cycle)->default_value(2), "number of cell cycles") // only meaningful when tracking one child
       ("n_cell,n", po::value<int>(&n_cell)->default_value(2), "size of final population")
       ("div_break", po::value<int>(&div_break)->default_value(0), "maximum ID of cell division when DSBs occurs")
-      // ("dsb_rate,r", po::value<double>(&dsb_rate)->default_value(20), "rate of double strand break per division")
+      ("dsb_rate,r", po::value<int>(&dsb_rate)->default_value(0), "constant rate of double strand break per division in gradutual evolution")
       ("min_dsb", po::value<int>(&min_dsb)->default_value(0), "minimal number of double strand breaks")
       ("max_dsb", po::value<int>(&max_dsb)->default_value(40), "maximal number of double strand breaks")
-      ("n_dsb", po::value<int>(&n_dsb)->default_value(20), "number of double strand breaks introduced in G1")
+      ("n_dsb", po::value<int>(&n_dsb)->default_value(20), "number of double strand breaks introduced in G1 (in catastrophic events)")
       ("frac_unrepaired", po::value<double>(&frac_unrepaired)->default_value(0), "fraction of unrepaired double strand breaks in G1, default: all breaks are repaired")
       ("n_local_frag", po::value<int>(&n_local_frag)->default_value(0), "mean number of double strand breaks introduced by local fragmentation during mitosis")
       ("frac_unrepaired_local", po::value<double>(&frac_unrepaired_local)->default_value(1), "number of unrepaired double strand breaks in local fragmentation during mitosis, default: all breaks are not repaired")
@@ -159,12 +159,11 @@ int main(int argc, char const *argv[]){
     if(verbose > 0) cout << "\nFinish cell growth " << endl;
 
     vector<Cell_ptr> final_cells;
-    if(track_all){
-      cout << "Tracking all cells" << endl;
-      final_cells = s->cells;
-    }else{
-      final_cells = s->curr_cells;
-    }
+    final_cells = s->curr_cells;
+    // if(track_all){
+    //   cout << "Tracking all cells" << endl;
+    //   final_cells = s->cells;
+    // }
 
     if(verbose > 0) cout << "\nComputing breakpoints on each chromosome across all cells for more intuitive comparison and visualization" << endl;
     // get breakpoints across cells first
@@ -205,7 +204,6 @@ int main(int argc, char const *argv[]){
       vector<pos_cn> dels;
       // seems not necessary as the breakpoints can be telled from copy number segments
       // cell->g->get_pseudo_adjacency(dups, dels, verbose);
-
       // compute and print summary statistics, used for ABC
       cell->print_total_summary(dups, dels, verbose);
 
@@ -218,18 +216,6 @@ int main(int argc, char const *argv[]){
         string fname_stat_chr = outdir +"/" + "sumStats_chrom_c" + midfix + filetype;
         cell->write_summary_stats(fname_stat, fname_stat_chr);
       }
-
-      if(write_rck){
-        //  and circos plot
-        if(verbose > 0) cout << "\nWrite output for RCK graph" << endl;
-        string subdir = outdir + "/" +  "c" + to_string(cell->cell_ID);
-        boost::filesystem::path dir(subdir);
-        boost::filesystem::create_directory(dir);
-        string fname_cn = subdir + "/" + "rck.scnt.tsv";      
-        string fname_sv = subdir + "/" + "rck.acnt.tsv";
-        cell->write_rck(fname_cn, fname_sv, dups, dels, verbose);
-      }
-
       // write CN and SV data to tsv - for ShatterSeek
       if(write_shatterseek){
         if(verbose > 0) cout << "\nWrite output for ShatterSeek" << endl;
@@ -245,9 +231,41 @@ int main(int argc, char const *argv[]){
         string fname = outdir +"/" + "genome_c" + midfix + filetype;
         cell->write_genome(fname);
       }
+
     }      
     
-    if(verbose > 0) s->print_all_cells(final_cells, verbose);
+    // at the end to avoid conflict with merged copy numbers
+    if(write_rck){
+      if(verbose > 0) cout << "\nWrite output in RCK format" << endl;
+      for(auto cell : final_cells){
+        map<int, set<int>> bps_by_chr;
+        cell->g->get_bps_per_chr_orig(bps_by_chr, verbose);
+
+        cell->g->calculate_segment_cn(bps_by_chr, verbose);
+
+        //  and circos plot
+        if(verbose > 0) cout << "\nWrite output for RCK graph" << endl;
+        string subdir = outdir + "/" +  "c" + to_string(cell->cell_ID);
+        boost::filesystem::path dir(subdir);
+        boost::filesystem::create_directory(dir);
+        string fname_cn = subdir + "/" + "rck.scnt.tsv";      
+        string fname_sv = subdir + "/" + "rck.acnt.tsv";
+        cell->write_rck(fname_cn, fname_sv, verbose);
+
+        // same format as 
+        if(verbose > 0) cout << "\nWrite output for chromosome graph plot" << endl;
+        fname_cn = subdir + "/" + "copy_number.CN_opt.phased";      
+        fname_sv = subdir + "/" + "SVs.CN_opt.phased";
+        cell->write_plot(fname_cn, fname_sv, verbose);
+      }
+    }
+
+    if(track_all){
+      string fname_tree = outdir + "/" + "cell_lineage.tsv";  
+      ofstream fout_lineage(fname_tree);
+      s->print_all_cells(s->cells, fout_lineage, verbose);
+      fout_lineage.close();
+    }
 
     delete s;
     gsl_rng_free(r);

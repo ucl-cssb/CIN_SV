@@ -302,7 +302,6 @@ public:
         double b0 = start_cell->birth_rate;
         double d0 = start_cell->death_rate;
 
-
         if(verbose > 1){
             cout << "new birth-death rate for cell "<< dcell->cell_ID << " is " << dcell->birth_rate << "-" << dcell->death_rate << " with fitness " << model.fitness << " and genotype difference " << gdiff << endl;
         }
@@ -335,7 +334,6 @@ public:
                  initialize_with_dsb(ncell, model, track_all);
                  continue;
              }
-             // print_all_cells(this->curr_cells, verbose);
 
              // Choose a random cell from the current population
              int rindex = myrng(this->curr_cells.size());
@@ -384,11 +382,10 @@ public:
                      update_cell_growth(dcell2, ncell, model, verbose);
                  }
                  // Remove the parent cell from the list of current cells
-                 if(rID != 1){
+                 if(rID != 1 && !track_all){
                      delete (this->curr_cells[rindex]);
                      this->curr_cells[rindex] = NULL;
                  }
-
                  this->curr_cells.erase(this->curr_cells.begin() + rindex);
                  this->curr_cells.push_back(dcell1);
                  this->curr_cells.push_back(dcell2);
@@ -402,7 +399,7 @@ public:
                  // if(verbose > 1){
                  //   cout << "Select cell " << rID << " with " << rcell->n_dsb << " DSBs and birth rate " << rcell->birth_rate << ", death rate " << rcell->death_rate << " to disappear" << endl;
                  // }
-                 if(rID != 1){
+                 if(rID != 1 && !track_all){
                      delete (this->curr_cells[rindex]);
                      this->curr_cells[rindex] = NULL;
                  }
@@ -414,12 +411,6 @@ public:
 
          this->time_end += t;
          // this->n_novel_dsb  += nu;
-
-         if(verbose > 1){
-             // cout << "Generated " << nu << " mutations during time " << t << endl;
-             if(track_all) print_all_cells(this->cells, verbose);
-             else print_all_cells(this->curr_cells, verbose);
-         }
      }
 
 
@@ -431,14 +422,15 @@ public:
     /*
        This method prints out the copy numbers of each final cell in a clone
      */
-    void print_all_cells(vector<Cell_ptr> cells, int verbose = 0){
+    void print_all_cells(vector<Cell_ptr> cells, ofstream& fout, int verbose = 0){
         int Nend = cells.size();
         if(verbose > 0) cout << "Printing " << Nend << " cells" << endl;
 
-        cout << "\ncell_ID\tparent_ID\n";
+        fout << "cell_ID\tparent_ID\n";
         for(unsigned int i = 0; i < Nend; i++) {
             Cell_ptr cell = cells[i];
-            cout << cell->cell_ID << "\t" << cell->parent_ID << endl;
+            if(cell->parent_ID == 0) continue;
+            fout << cell->cell_ID << "\t" << cell->parent_ID << endl;
         }
     }
 

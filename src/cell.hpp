@@ -128,6 +128,7 @@ public:
     int n_t2t;
     int n_tra;
     int n_circle;
+    int n_ecdna;  // circular chromosomes without centromeres
 
     // count events by chromosome
     map<int, set<vector<int>>> chr_bp_unique;  // use position to be consistent with real data
@@ -169,6 +170,7 @@ public:
         n_t2t = 0;
         n_tra = 0;
         n_circle = 0;  
+        n_ecdna = 0;
     }         
 
 
@@ -194,7 +196,8 @@ public:
         this->n_h2h = 0;
         this->n_t2t = 0;
         this->n_tra = 0;
-        this->n_circle = 0;          
+        this->n_circle = 0; 
+        this->n_ecdna = 0;          
     }
 
 
@@ -221,7 +224,8 @@ public:
         this->n_h2h = 0;
         this->n_t2t = 0;
         this->n_tra = 0;
-        this->n_circle = 0;          
+        this->n_circle = 0; 
+        this->n_ecdna = 0;            
     }
 
 
@@ -359,13 +363,13 @@ public:
 
         double u = runiform(r, 0, 1);
         if(u < 0.5){
-          if(verbose > 1){
+          if(verbose > 0){
             cout << "Distributing copied path " << p->id + 1 << desc << " to daughter cell " << dcell1->cell_ID << endl;
             g->write_path(p, cout);
           }
           inherit_path_one(p, dcell1, verbose);
         }else{
-          if(verbose > 1){
+          if(verbose > 0){
             cout << "Distributing copied path " << p->id + 1 << desc << " to daughter cell " << dcell2->cell_ID << endl;
             g->write_path(p, cout);
           }
@@ -920,12 +924,15 @@ public:
       // only breakpoints with missing connections need to be repaired
       for(auto jm : g->breakpoints){
         breakpoint* j = jm.second;
-        if(!j->is_repaired){
+        if(!j->is_repaired){   // breakpoints from previous cycles may not be repaired
           junc2repair.push_back(j);
+          if(verbose > 0) j->print();
         }
       }
+      if(verbose > 0) cout << junc2repair.size() << " breakpoints to repair" << endl;
 
       // assume two junction points are related to one DSB
+      // each repairing connects two breakpoints, so not all breakpoints will be repaired if there is an odd number of breakpoints
       n_unrepaired = round(junc2repair.size() / 2 * frac_unrepaired);
       int n_torepair = junc2repair.size() / 2 - n_unrepaired;
       if(verbose > 0) cout << "\nRepairing " << n_torepair << " DSBs" << endl;      
@@ -981,9 +988,10 @@ public:
             n_telo_fusion += 1;
           // }
 
-          if(verbose > 1){
-            cout << "before path fusion" << endl;
+          if(verbose > 0){
+            cout << "fusion of path " << p->id + 1 << endl;
             p->print();
+            g->write_path(p, cout);
           }
 
           // keep the same path ID, as it is extended with its copy
@@ -1262,7 +1270,10 @@ public:
           exit(FAIL);
         }
 
-        if(p->is_circle) n_circle += 1;
+        if(p->is_circle){
+          n_circle += 1;
+          if(p->n_centromere == 0) n_ecdna += 1;
+        }
       }
     }
 
@@ -1364,7 +1375,7 @@ public:
     // Follow format of RCK output
     // CN: "chr", "start", "end", "extra"
     // SV: "chr1", "coord1", "strand1", "chr2", "coord2", "strand2",	"extra"
-    void write_rck(string fname_cn, string fname_sv, const vector<pos_cn>& dups, const vector<pos_cn>& dels, int verbose = 0){
+    void write_rck(string fname_cn, string fname_sv, int verbose = 0){
       ofstream fout_cn(fname_cn);
       string header = "chr\tstart\tend\textra\n";
       fout_cn << header;
@@ -1378,7 +1389,7 @@ public:
           string line = to_string(s->chr + 1) + "\t" + to_string(s->start) + "\t" + to_string(s->end) + "\t" + extra + "\n";
           fout_cn << line;
         }
-      }
+      }  
       fout_cn.close();
 
       ofstream fout(fname_sv);
@@ -1404,6 +1415,8 @@ public:
         int cn_AB = ac.cnAB;
         int cn_BA = ac.cnBA;
         int cn_BB = ac.cnBB;
+        int tcn = cn_AA + cn_AB + cn_BA + cn_BB;
+        // if(tcn == 0) continue;
         string extra = "aid=" + (idx) + ";cn={'c1': {'AA': " + to_string(cn_AA) + ", 'AB': "+ to_string(cn_AB) + ", 'BA': " + to_string(cn_BA) + ", 'BB': " + to_string(cn_BB) + "}};at=" + ap.type;
         string line = (idx) + "\t" + to_string(ap.chr1 + 1) + "\t" + to_string(ap.pos1) + "\t" + get_side_string(ap.strand1) + "\t" + to_string(ap.chr2 + 1) + "\t" + to_string(ap.pos2) + "\t" + get_side_string(ap.strand2) + "\t" + extra + "\n";
         fout << line;
@@ -1423,20 +1436,69 @@ public:
       //   }
       // }
 
-      for(auto d: dups){
-          string extra = "sv_type=DUP";
-          string line = to_string(d.chr + 1) + "\t" + to_string(d.start) + "\t" + "-" + "\t" + to_string(d.chr + 1) + "\t" + to_string(d.end) + "\t" + "+" + "\t" + extra + "\n";
-          fout << line;       
-      }
+      // for(auto d: dups){
+      //     string extra = "sv_type=DUP";
+      //     string line = to_string(d.chr + 1) + "\t" + to_string(d.start) + "\t" + "-" + "\t" + to_string(d.chr + 1) + "\t" + to_string(d.end) + "\t" + "+" + "\t" + extra + "\n";
+      //     fout << line;       
+      // }
 
-      for(auto d: dels){
-          string extra = "sv_type=DEL";
-          string line = to_string(d.chr + 1) + "\t" + to_string(d.start) + "\t" + "+" + "\t" + to_string(d.chr + 1) + "\t" + to_string(d.end) + "\t" + "-" + "\t" + extra + "\n";
-          fout << line;       
+      // for(auto d: dels){
+      //     string extra = "sv_type=DEL";
+      //     string line = to_string(d.chr + 1) + "\t" + to_string(d.start) + "\t" + "+" + "\t" + to_string(d.chr + 1) + "\t" + to_string(d.end) + "\t" + "-" + "\t" + extra + "\n";
+      //     fout << line;       
+      // }
+
+      fout.close();
+    }
+
+   // Follow format of RCK output
+    // CN: Chromosome  Start.bp    End.bp allele_1 allele_2
+    // SV: <SV>	2	213454835	2	213584799	3to5	0	1	0	1
+    void write_plot(string fname_cn, string fname_sv, int verbose = 0){
+      ofstream fout_cn(fname_cn);
+      string header = "Chromosome\tStart.bp\tEnd.bp\tallele_1\tallele_2\n";
+      fout_cn << header;
+      for(auto sg : g->chr_segments){
+        for(auto s : sg.second){
+          // [) interval to avoid manual overlapping
+          string line = to_string(s->chr + 1) + "\t" + to_string(s->start) + "\t" + to_string(s->end) + "\t" + to_string(s->cnA)  + "\t" + to_string(s->cnB) + "\n";
+          fout_cn << line;
+        }
+      }  
+      fout_cn.close();
+
+      ofstream fout(fname_sv);
+      g->get_adjacency_CN();
+      int id_alt = 0;
+      int id_ref = 0;
+      string idx = "";
+      for(auto adjm : g->adjacency_CNs){
+        adj_pos ap = adjm.first;
+        adj_cn ac = adjm.second;
+        
+        int cn_AA = ac.cnAA;
+        int cn_AB = ac.cnAB;
+        int cn_BA = ac.cnBA;
+        int cn_BB = ac.cnBB;
+
+        string direction = "";
+        if(ap.strand1 == TAIL && ap.strand2 == TAIL){
+          direction = "3to3";
+        }else if(ap.strand1 == HEAD && ap.strand2 == HEAD){
+          direction = "5to5";
+        }else if(ap.strand1 == TAIL && ap.strand2 == HEAD){
+          direction = "3to5";
+        }else{
+          assert(ap.strand1 == HEAD && ap.strand2 == TAIL);
+          direction = "5to3";
+        }
+        string line = "<SV>\t" + to_string(ap.chr1 + 1) + "\t" + to_string(ap.pos1) + "\t" + to_string(ap.chr2 + 1) + "\t" + to_string(ap.pos2) + "\t" + direction + "\t" + to_string(cn_AA) + "\t" + to_string(cn_AB) + "\t" + to_string(cn_BA) + "\t" + to_string(cn_BB) + "\n";
+        fout << line;
       }
 
       fout.close();
     }
+
 
     // output in a way to facilitate understanding of CN and SV data
     void write_genome(string fname){
@@ -1449,6 +1511,7 @@ public:
         }
     }
 
+
     // Assume the summary statistics have been computed
     void write_summary_stats(string fname, string fname_chr){     
       assert(dbs_unique.size() >= 0);
@@ -1459,7 +1522,7 @@ public:
       // writing summary statistics for all chromosomes
       ofstream fout(fname);
       // nBP includes chromosome ends
-      fout << "cycleID\tcellID\tnDSB\tnUnrepair\tnDBS_unique\tnBP_unique\tnBP\tnDel\tnDup\tnH2HInv\tnT2TInv\tnTra\tnCircle\n";
+      fout << "cycleID\tcellID\tnDSB\tnUnrepair\tnDBS_unique\tnBP_unique\tnBP\tnDel\tnDup\tnH2HInv\tnT2TInv\tnTra\tnCircle\tnECDNA\n";
       // writing summary statistics for each chromosome
       ofstream fout_chr(fname_chr);
       fout_chr << "cycleID\tcellID\tchr\tnBP\tnDel\tnDup\tnH2HInv\tnT2TInv\tnTra\n";
@@ -1468,7 +1531,7 @@ public:
       //   cout << dbs[0] << "\t" << dbs[1] << "\t" << dbs[2] << "\n";
       // }
 
-      fout << to_string(div_occur) + "\t" + to_string(cell_ID) + "\t" + to_string(n_dsb) + "\t" + to_string(n_unrepaired)  + "\t" + to_string(dbs_unique.size()) + "\t" + to_string(bp_unique.size()) + "\t" + to_string(n_bp) + "\t" + to_string(n_del) + "\t" + to_string(n_dup) + "\t" + to_string(n_h2h) + "\t" + to_string(n_t2t)  + "\t" + to_string(n_tra) + "\t" + to_string(n_circle) + "\n";
+      fout << to_string(div_occur) + "\t" + to_string(cell_ID) + "\t" + to_string(n_dsb) + "\t" + to_string(n_unrepaired)  + "\t" + to_string(dbs_unique.size()) + "\t" + to_string(bp_unique.size()) + "\t" + to_string(n_bp) + "\t" + to_string(n_del) + "\t" + to_string(n_dup) + "\t" + to_string(n_h2h) + "\t" + to_string(n_t2t)  + "\t" + to_string(n_tra) + "\t" + to_string(n_circle) + "\t" + to_string(n_ecdna) +"\n";
       fout.close();
 
       for(int i = 0; i < NUM_CHR; i++){

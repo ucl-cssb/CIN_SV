@@ -1073,7 +1073,6 @@ public:
         // || j1->haplotype != j2->haplotype, ignore haplotype as it is hard to determine from real data
         if(j1->chr != j2->chr){
           sv_type = BND;
-        }else{
         }
       }else if(j1->side == HEAD && j2->side == HEAD){ //h2hINV
         assert(j1->left_jid >= 0);
@@ -1084,7 +1083,6 @@ public:
         sv_type = H2HINV;
         if(j1->chr != j2->chr){
           sv_type = BND;
-        }else{
         }
       }else if(j1->side == TAIL && j2->side == HEAD){
         assert(j1->right_jid >= 0);
@@ -1107,7 +1105,6 @@ public:
         sv_type = T2TINV;
         if(j1->chr != j2->chr){
           sv_type = BND;
-        }else{
         }
       }
 
@@ -2164,7 +2161,7 @@ void get_merged_interval(int verbose = 0){
     }
   }
 
-
+  // get breakpoints after merging intervals with the same copy number
   // TODO: To avoid segments completely lost in one cell not shown, add chr end when needed 
   void get_bps_per_chr(map<int, set<int>>& bps_by_chr, int verbose = 0){
     get_merged_interval(verbose);
@@ -2197,18 +2194,50 @@ void get_merged_interval(int verbose = 0){
     }
   }
 
+
+  void get_bps_per_chr_orig(map<int, set<int>>& bps_by_chr, int verbose = 0){
+    // get_unique_interval(verbose);  // should have been called by get_bps_per_chr
+    // split regions on same chr to get total CN (for shatterseek input)
+    for(auto cnp : cn_by_chr_hap){
+      int chr = cnp.first.first;
+      int haplotype = cnp.first.second;
+      vector<interval> intls = cnp.second;
+      // find all breakpoints
+      set<int> bps;
+      for(auto intl : cnp.second){
+        int start = intl.start;
+        int end = intl.end;
+        bps_by_chr[chr].insert(start);
+        bps_by_chr[chr].insert(end);
+      }
+    }
+
+    if(verbose > 1){
+      cout << "\nbreakpoints for each chr after merging regions with the same CN" << endl;
+      for(auto bpc : bps_by_chr){
+        int chr = bpc.first;
+        cout << chr + 1 << ":";
+        for(auto bp : bpc.second){
+          cout << " " << bp;
+        }
+        cout << endl;
+      }
+    }
+  }
+
+
   // Compute allele-specific and total copy number
   void calculate_segment_cn(map<int, set<int>>& bps_by_chr, int verbose = 0){
     // verbose = 1;
-    assert(this->chr_segments.size() == 0); // only compute once for a cell
-    // if(this->chr_segments.size() > 0){
-    //   for(auto sg : chr_segments){
-    //     for(auto s : sg.second){
-    //       delete s;
-    //     }     
-    //   }
-    //   chr_segments.clear();
-    // }
+    // assert(this->chr_segments.size() == 0); // only compute once for a cell
+    if(this->chr_segments.size() > 0){
+      for(auto sg : chr_segments){
+        for(auto s : sg.second){
+          delete s;
+        }     
+      }
+      chr_segments.clear();
+    }
     int sid = 0;
 
     // split the regions according to the breakpoints
@@ -2217,6 +2246,7 @@ void get_merged_interval(int verbose = 0){
       int chr = bpc.first;
       set<int> bps = bpc.second;  // should be sorted
       vector<pair<int, int>> intls;
+
       set<int>::iterator it = bps.begin();
       int pos1 = *it;
       it++;
@@ -2241,6 +2271,7 @@ void get_merged_interval(int verbose = 0){
         // find cns for each interval in each haplotype
         cout << "CNs for haplotype A" << endl;
       }
+
       map<pair<int, int>, int> cn_A;
       pair<int, int> key(chr, 0);
       vector<interval> cnsA = cn_by_chr_hap_merged[key];
@@ -2376,12 +2407,15 @@ void get_merged_interval(int verbose = 0){
 
 
     // Get adjacency haplotype-specific CNs for AA, AB, BA, BB
-    void get_adjacency_CN(){      
+    void get_adjacency_CN(){   
+      adjacency_CNs.clear();   
+      
       string at = "";
       for(auto p: paths){
         for(auto e : p.second->edges){
           // cout << "\nedge " << e << endl;
           adjacency *adj = adjacencies[e];
+          // adj->print();
 
           if(adj->type == 0){ // 0: interval, 1: reference, 2: variant
             continue;
@@ -2393,8 +2427,7 @@ void get_merged_interval(int verbose = 0){
           }else{
             at = "N"; // novel
           }
-
-          // adj->print();
+         
           breakpoint *j1 = breakpoints[adj->junc_id1];
           breakpoint *j2 = breakpoints[adj->junc_id2];
           // make sure adjacencies connecting the same two positions are grouped together
