@@ -115,11 +115,16 @@ public:
     double birth_rate;
     double death_rate;
 
+    // chr-level and arm-level CNs for computing fitness values
+    vector<int> chr_tcns;
+    vector<int> arm_tcns;
+    double surv_prob;   // survival probability
+    double fitness;   // selection coefficient as in the classic definition
+
     // parameters related to DSB generation
     // double dsb_rate;  // use exact number for external control over each cell
     int n_dsb;    // number of double strand breaks during cell division
     int n_unrepaired; // number of unrepaired double strand breaks
-
 
     int n_bp;  // each breakpoint may have at most two connections
     int n_del;
@@ -1169,6 +1174,101 @@ public:
     return false;
    }
 
+
+    // get average total CN for each chromosome
+    void get_chr_tcn(){
+        chr_tcns.clear();
+        map<int, vector<int>> chr_cns;
+        // intialize to avoid chromosome loss 
+        for(int i = 0; i < NUM_CHR; i++){
+          vector<int> cns;
+          chr_cns[i] = cns;
+        }
+        for(auto sg : g->chr_segments){
+          for(auto s : sg.second){ 
+            // string extra = "cn={'c1': {'A': " + to_string(s->cnA) + ", 'B': " + to_string(s->cnB) + "}}";
+            // [) interval to avoid manual overlapping
+            // string line = to_string(s->chr + 1) + "\t" + to_string(s->start) + "\t" + to_string(s->end) + "\t" + extra + "\n";
+            // cout << line;               
+            int tcn = s->cnA + s->cnB;
+            chr_cns[s->chr].push_back(tcn);
+          }
+        }
+        // cout << chr_cns.size() << endl;
+        assert(chr_cns.size() == NUM_CHR);
+
+        for(auto ct : chr_cns){
+          vector<int> cns = ct.second;
+          int tcn = accumulate(cns.begin(), cns.end(), 0);
+          double acn =  (double) tcn / cns.size();
+          chr_tcns.push_back(round(acn));
+        }
+        // cout << chr_tcns.size() << endl;
+        assert(chr_tcns.size() == NUM_CHR);
+    }
+
+
+    // need to determine arm boundary
+    void get_arm_tcn(){
+        arm_tcns.clear();
+        map<pair<int, int>, vector<int>> arm_cns;
+        for(int i = 0; i < NUM_CHR; i++){
+          vector<int> cns;
+          pair<int, int> key(i, 0);
+          arm_cns[key] = cns;
+          pair<int, int> key1(i, 1);
+          arm_cns[key1] = cns;          
+        }       
+        for(auto sg : g->chr_segments){
+          for(auto s : sg.second){  
+            string extra = "cn={'c1': {'A': " + to_string(s->cnA) + ", 'B': " + to_string(s->cnB) + "}}";
+            // [) interval to avoid manual overlapping
+            string line = to_string(s->chr + 1) + "\t" + to_string(s->start) + "\t" + to_string(s->end) + "\t" + extra + "\n";
+            cout << line;             
+            int tcn = s->cnA + s->cnB;
+            // check arm type
+            int arm = 0; // p arm
+            int ss = s->start;
+            // int se = s->end;
+            int arm_bound = ARM_BOUNDS[s->chr];
+            // for convenience, only consider start position
+            if(ss > arm_bound) arm = 1;
+            pair<int, int> key(s->chr, arm);
+            arm_cns[key].push_back(tcn);
+          }
+        }
+        assert(arm_cns.size() == NUM_CHR * 2);
+
+        for(auto ct : arm_cns){
+          vector<int> cns = ct.second;
+          int tcn = accumulate(cns.begin(), cns.end(), 0);
+          double acn =  (double) tcn / cns.size();
+          arm_tcns.push_back(round(acn));
+        }
+        // cout << arm_tcns.size() << endl;
+        assert(arm_tcns.size() == NUM_CHR * 2);      
+    }
+
+
+    // according to the formula in Laughney et al, 2015
+    void get_surv_prob(int selection_type, int verbose){     
+      double score = 0.0;
+      if(selection_type == 0){
+        get_chr_tcn();
+        for(int i = 0; i < NUM_CHR; i++){
+          score += CHR_SCORE[i] * chr_tcns[i];
+        }
+      }else{
+        get_arm_tcn();
+        for(int i = 0; i < NUM_CHR * 2; i += 2){
+          score += ARM_SCORE[i] * arm_tcns[i];
+          score += ARM_SCORE[i + 1] * arm_tcns[i];
+        }       
+      }
+      if(verbose > 1) cout << "computing survival probability of the cell with selection type " << selection_type << " and original score " << score << endl;
+      // score can be negative and the probability can be 0
+      surv_prob = exp(SURVIVAL_D * score);
+    }
 
     // summary for the whole genome of each cell, computed from the set of adjacencies
     void get_summary_stats(int verbose = 0){

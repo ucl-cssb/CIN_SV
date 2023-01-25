@@ -59,10 +59,52 @@ const int NUM_SVTYPE = 8;
 enum SV_type{NONE, DEL, DUP, H2HINV, T2TINV, BND, DELREAL, DUPREAL}; // only for variant adjacency, BND: intra-chromosomal
 
 enum SStat_type{ALL};
+
 enum Growth_type{ONLY_BIRTH, CHANGE_BIRTH, CHANGE_DEATH, CHANGE_BOTH};
+
 enum Telo_type{NONTEL, PTEL, QTEL, COMPLETE};
 enum Adj_type{INTERVAL, REF, VAR};   // 0: interval, 1: reference, 2: variant
 enum Junc_type{HEAD, TAIL};
+
+
+const double SURVIVAL_D = 0.00039047;
+
+// Chromosome and arm scores, taken from Davoli et al.
+const double CHR_SCORE[] = {-0.143640496, 0.638322635, 0.597508197, 0.106407616, -0.785208831, -0.664148445, 3.039521587, 1.650903175, 0.765873656, -1.23443224, 0.210103365,
+                        1.720482377, -1.207617162, -0.712581034, -0.751608856, -1.277797927, -0.784673321, -1.428496154, 0.809097907, 1.780741874, 1.568732394, -1.576297101};
+
+// use 0 for short p arms with few genes
+const double ARM_SCORE[] = {-2.194424482, 1.226691224,	
+-0.058765864,	0.722951857,	
+-0.23241358,	2.77507441,	
+0.343354369,	1.236932406,	
+1.29642446,	-0.728377682,	
+-0.841818493,	-0.783217918,	
+5.195591398,	4.588576125,	
+1.391378151,	1.26397449,	
+-1.495356436,	1.979101476,	
+-3.665105263,	-0.068322404,	
+0.590530233,	-0.200811736,	
+2.960242754,	1.661808926,	
+0.,	-1.906547855,	  // 13
+0.,	-0.784903448,	
+0.,	-0.893062731,	
+0.450231325,	-3.157515406,	
+-2.803987461,	0.168961686,  
+0.,	-2.868015464,	
+1.632886207,	-0.908804749,	
+0.602858757,	1.609560694,	
+0.,	-0.990394366,	
+0.,	-1.209528986};
+
+// https://www.sciencedirect.com/book/9780124046313/benign-and-pathological-chromosomal-imbalances
+// The five human acrocentric chromosomes are numbered 13, 14, 15, 21, and 22. 
+// They all have a cytogenetically similar short arm that is extremely gene-poor. 
+// Their main contribution for the cell is that the acrocentric short arms are carriers of the nucleolus organizing regions (NOR) in subbands p12
+// double arm_scores1[] = {-2.194424482, 1.226691224,	-0.058765864,	0.722951857,	-0.23241358,	2.77507441,	0.343354369,	1.236932406,	1.29642446,	-0.728377682,	-0.841818493,	-0.783217918,	5.195591398,	4.588576125,	1.391378151,	1.26397449,	-1.495356436,	1.979101476,	-3.665105263,	-0.068322404,	0.590530233,	-0.200811736,	2.960242754,	1.661808926,	-1.906547855,	-0.784903448,	-0.893062731,	0.450231325,	-3.157515406,	-2.803987461,	0.168961686,  0.,	-2.868015464,	1.632886207,	-0.908804749,	0.602858757,	1.609560694,	-0.990394366,	-1.209528986};
+// Indexing of chromosome arms (the second component of each pair is 1 or 2 to refere to the p-arm or the q-arm, respectively)
+// armlist:=[[1, 1], [1, 2], [2, 1], [2, 2], [3, 1], [3, 2], [4, 1], [4, 2], [5, 1], [5, 2], [6, 1], [6, 2], [7, 1], [7, 2], [8, 1], [8, 2], [9, 1], [9, 2], [10, 1], [10, 2], [11, 1], [11, 2], [12, 1], [12, 2],  [13, 2],  [14, 2],  [15, 2], [16, 1], [16, 2], [17, 1], [17, 2], [18, 1], [18, 2], [19, 1], [19, 2], [20, 1], [20, 2],  [21, 2],  [22, 2]]
+
 
 gsl_rng * r;
 
@@ -246,7 +288,7 @@ void get_chr_prob(int type, vector<int>& selected_chr){
     return;
   }
 
-  int nb = 1;
+  int nb = 1;   // number of chromosomes with biased probability of DSBs
   if(type == 1){ // biased
     nb = myrng(3);
     // randomly select nb chromosomes
@@ -393,5 +435,30 @@ int find_max_size(int x, const vector<int>& vec){
     return max;
   }  
 }
+
+
+  // get survival probability of normal cell (compute once)
+  double get_surv_prob_normal_chr(){
+    double score = 0.0;
+    for(int i = 0; i < NUM_CHR; i++){  
+      score += CHR_SCORE[i] * 2;
+    }
+    double surv_prob = exp(SURVIVAL_D * score);
+    return surv_prob;
+  }
+
+
+  double get_surv_prob_normal_arm(){
+    double score = 0.0;
+    for(int i = 0; i < NUM_CHR * 2; i += 2){
+        score += ARM_SCORE[i] * 2;
+        score += ARM_SCORE[i + 1] * 2;
+      }       
+
+    double surv_prob = exp(SURVIVAL_D * score);
+    return surv_prob;
+  }
+
+
 
 #endif

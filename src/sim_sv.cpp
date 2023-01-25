@@ -17,7 +17,7 @@ int main(int argc, char const *argv[]){
     // int n_cycle;
     int n_cell;
     int dsb_rate;
-    int min_dsb, max_dsb;
+    // int min_dsb, max_dsb;
     int n_dsb;
     double frac_unrepaired;
     double circular_prob;
@@ -31,10 +31,8 @@ int main(int argc, char const *argv[]){
 
     double birth_rate, death_rate;
 
-    int model_ID;   // not making differences, fitness is used to introduce selection
-    int use_alpha;  // when alpha is used, genotype differences are considered
-    double fitness;
-    int genotype_diff;
+    int model_ID;   
+    int selection_type;
     int growth_type;
 
     string outdir, suffix; // output
@@ -58,10 +56,10 @@ int main(int argc, char const *argv[]){
     required.add_options()
       // ("n_cycle", po::value<int>(&n_cycle)->default_value(2), "number of cell cycles") // only meaningful when tracking one child
       ("n_cell,n", po::value<int>(&n_cell)->default_value(2), "size of final population")
-      ("div_break", po::value<int>(&div_break)->default_value(0), "maximum ID of cell division when DSBs occurs")
-      ("dsb_rate,r", po::value<int>(&dsb_rate)->default_value(0), "constant rate of double strand break per division in gradutual evolution")
-      ("min_dsb", po::value<int>(&min_dsb)->default_value(0), "minimal number of double strand breaks")
-      ("max_dsb", po::value<int>(&max_dsb)->default_value(40), "maximal number of double strand breaks")
+      ("div_break", po::value<int>(&div_break)->default_value(0), "maximum ID of cell division when double strand breaks occurs")
+      ("dsb_rate,r", po::value<int>(&dsb_rate)->default_value(0), "constant rate of double strand breaks per division in gradutual evolution")
+      // ("min_dsb", po::value<int>(&min_dsb)->default_value(0), "minimal number of double strand breaks (lower bound of uniform distribution of the number of double strand breaks)")
+      // ("max_dsb", po::value<int>(&max_dsb)->default_value(40), "maximal number of double strand breaks (upper bound of uniform distribution of the number of double strand breaks)")
       ("n_dsb", po::value<int>(&n_dsb)->default_value(20), "number of double strand breaks introduced in G1 (in catastrophic events)")
       ("frac_unrepaired", po::value<double>(&frac_unrepaired)->default_value(0), "fraction of unrepaired double strand breaks in G1, default: all breaks are repaired")
       ("n_local_frag", po::value<int>(&n_local_frag)->default_value(0), "mean number of double strand breaks introduced by local fragmentation during mitosis")
@@ -69,7 +67,7 @@ int main(int argc, char const *argv[]){
       ("chr_prob", po::value<int>(&chr_prob)->default_value(0), "the types of assigning probability of double strand breaks across chromosomes. 0: random; 1: biased; 2: fixed")
       ("circular_prob", po::value<double>(&circular_prob)->default_value(0), "the probability of a frament without centromere and telomeres forming circular DNA (ecDNA)")
       // ("target_chrs", po::value<string>(&target_chrs)->default_value(""), "biased chromosomes to introduce breaks, total number followed by ID of each chromosome")
-      ("fchr_prob", po::value<string>(&fchr_prob)->default_value(""), "the file containing the probability of double strand breaks on each chromosome")
+      ("fchr_prob", po::value<string>(&fchr_prob)->default_value(""), "the file containing    the probability of double strand breaks on each chromosome")
 
       ("birth_rate,b", po::value<double>(&birth_rate)->default_value(1), "birth rate")
       ("death_rate,d", po::value<double>(&death_rate)->default_value(0), "death rate")
@@ -84,9 +82,7 @@ int main(int argc, char const *argv[]){
 
       // options related to model of evolution
       ("model", po::value<int>(&model_ID)->default_value(0), "model of evolution. 0: neutral; 1: selection")
-      ("use_alpha", po::value<int>(&use_alpha)->default_value(1), "whether or not to use alpha in selection model. 0: use selection coefficient; 1: use alpha")
-      ("fitness,f", po::value<double>(&fitness)->default_value(0), "fitness values of mutatants")
-      ("genotype_diff", po::value<int>(&genotype_diff)->default_value(0), "type of karyotype difference to measure selection (not implemented yet)")
+      ("selection_type", po::value<int>(&selection_type)->default_value(0), "types used to define selection strength, 0: chr-level, 1: arm-level")
       ("growth_type,t", po::value<int>(&growth_type)->default_value(0), "Type of growth when adding selection. 0: only birth; 1: change birth rate; 2: change death rate; 3: change both birth or death rate")
 
       // options related to summary statistics
@@ -147,9 +143,11 @@ int main(int argc, char const *argv[]){
     // int diff = max_dsb - min_dsb;
     // int rdm = myrng(diff);
     // n_dsb = min_dsb + diff;
-    // n_dsb = gsl_ran_poisson(r, dsb_rate);
-
-    Model start_model(model_ID, genotype_diff, growth_type, fitness, use_alpha);
+    if(dsb_rate > 0){
+      n_dsb = gsl_ran_poisson(r, dsb_rate);
+    }
+    
+    Model start_model(model_ID, selection_type, growth_type);
     int n_unrepaired = round(n_dsb * frac_unrepaired);
     Cell_ptr start_cell = new Cell(1, 0, birth_rate, death_rate, n_dsb, n_unrepaired, 0, div_break);
     Clone* s = new Clone(1, 0);

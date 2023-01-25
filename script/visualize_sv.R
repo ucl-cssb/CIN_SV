@@ -8,6 +8,30 @@ library(ape)
 
 # Visualize simulated structural variants
 
+# not show sample names
+theme0 = theme(legend.position = "none",
+               #strip.text.x = element_blank(),
+               strip.text.y = element_blank(),
+               # strip.text.y.left = element_text(size=6, angle = 0),
+               strip.text.y.left = element_blank(),
+               strip.background = element_blank(),
+               axis.line.x = element_blank(),
+               axis.line.y = element_blank(),
+               axis.text.x = element_blank(),
+               axis.text.y = element_blank(),
+               axis.title.y = element_blank(),
+               axis.title.x = element_blank(),
+               axis.ticks.x = element_blank(),
+               axis.ticks.y = element_blank(),
+               panel.grid.minor = element_blank(),
+               panel.grid.major = element_blank(),
+               panel.spacing.y = unit(0, "lines"),
+               panel.spacing.x = unit(0, "lines"),
+               panel.border = element_rect(color = "#d8d8d8", fill = NA, size = .2),
+               panel.background = element_rect(fill = "#f0f0f0")
+)
+
+
 theme1 = theme(legend.position = "none",
                #strip.text.x = element_blank(),
                #strip.text.y = element_blank(),
@@ -44,7 +68,7 @@ cn_colors2 = c('#08519c','#3182bd', '#6baed6', '#9ecae1', "#f0f0f0", '#fdcc8a','
 # Format of d_seg: sample, chrom, start, end, cn
 plot.cn.heatmap <- function(d_seg, main, type="absolute", theme = theme1, cn_colors = cn_colors1, allele_specific = F){
   d_seg$cn = round(d_seg$cn)
-  d_seg$chrom = factor(d_seg$chrom, levels=paste("",c(c(1:22)),sep=""))
+  d_seg$chrom = factor(d_seg$chrom, levels=paste("",c(1:22, "X"),sep=""))
   d_seg$pos = (d_seg$end + d_seg$start) / 2
   d_seg$width = (d_seg$pos - d_seg$start) * 2
   

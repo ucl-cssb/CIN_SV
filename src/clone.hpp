@@ -100,35 +100,26 @@ void destroy_tree(node* root){
 class Model{
 public:
     int model_ID;
-    int genotype_diff;    // whether or not to consider genotype differences
     int growth_type;   // how cells grow under selection
-    double fitness;    // the strength of selection
-    int use_alpha;    // use the model based on alpha, in which fitness is alpha; Otherwise fitness is classic selection coefficient
-    double min_diff = 0;  // The mininal genotype differences that will cause fitness changes
-    int norm_by_bin = 1;  // normalized genotype differences by the number of bins
+    int selection_type;
+    double psurv_norm;
 
     Model(){
         model_ID = 0;
-        genotype_diff = 0;
+        selection_type = 0;
         growth_type = 0;
-        use_alpha = 0;
-        fitness = 0;
+        psurv_norm = get_surv_prob_normal_chr();
     }
 
-    Model(int model_ID, int genotype_diff, int growth_type, double fitness){
+    Model(int model_ID, int selection_type, int growth_type){
         this->model_ID = model_ID;
-        this->genotype_diff = genotype_diff;
+        this->selection_type = selection_type;
         this->growth_type = growth_type;
-        this->fitness = fitness;
-    }
-
-    Model(int model_ID, int genotype_diff, int growth_type, double fitness, int use_alpha, int norm_by_bin = 1){
-        this->model_ID = model_ID;
-        this->genotype_diff = genotype_diff;
-        this->growth_type = growth_type;
-        this->fitness = fitness;
-        this->use_alpha = use_alpha;
-        this->norm_by_bin = norm_by_bin;
+        if(selection_type == 0){
+            psurv_norm = get_surv_prob_normal_chr();
+        }else{
+            psurv_norm = get_surv_prob_normal_arm();
+        }       
     }
 };
 
@@ -288,14 +279,11 @@ public:
     /*
     * Key function when introducing selection into the stochastic branching process
     * Update the birth/death rate of a cell (only occur when there are new mutations in daughter cells) according to that of a reference cell
-    * TODO: Different fitness values may apply at different locations of the genome
     * start_cell: the baseline for fitness changes (should be the cell with optimum karyotype)
-    * Two models considered here:
-    * When genotype_diff > 0, selection model is based on alpha (negative selection -- positive alpha)
-    * Otherwise, selection model is based on classic selection coefficient (negative selection -- negative s)
-    * Genotype differences are considered to impose different selective advantages to different cells
+    * Two models considered here: chr-level, arm_level
+    * Use average total copy number for each chr or arm 
     */
-    void update_cell_growth(Cell_ptr dcell, const Cell_ptr start_cell, const Model& model, int loc_type, int verbose = 0) {
+    void update_cell_growth(Cell_ptr dcell, const Cell_ptr start_cell, const Model& model, int verbose = 0) {
         // Introduce selection to cells with CNAs using specified fitness
         double gdiff = 0;
         // assume start cell has optimum karyotype by default
@@ -303,8 +291,58 @@ public:
         double d0 = start_cell->death_rate;
 
         if(verbose > 1){
-            cout << "new birth-death rate for cell "<< dcell->cell_ID << " is " << dcell->birth_rate << "-" << dcell->death_rate << " with fitness " << model.fitness << " and genotype difference " << gdiff << endl;
+            cout << "update birth-death rate for cell "<< dcell->cell_ID << " with " << dcell->birth_rate << "-" << dcell->death_rate << endl;
         }
+
+        map<int, set<int>> bps_by_chr;
+        dcell->g->get_bps_per_chr(bps_by_chr, verbose);
+        dcell->g->calculate_segment_cn(bps_by_chr, verbose);
+
+        dcell->get_surv_prob(model.selection_type, verbose);
+        // the value may be 0
+        if(dcell->surv_prob == 0){
+            dcell->fitness = -0.999999;
+        }else{
+            dcell->fitness = log(dcell->surv_prob * (1 + dcell->surv_prob)) / log(model.psurv_norm * (1 + model.psurv_norm)) - 1;
+        }
+        
+        if(verbose > 1){
+            cout << "survival probability: " << dcell->surv_prob  << ", selection coefficient: " << dcell->fitness  << endl;
+        }
+
+        switch (model.growth_type) {
+            case ONLY_BIRTH: {
+                dcell->birth_rate = b0 * (1 + dcell->fitness);
+                break;
+            }
+            case CHANGE_BIRTH: {
+                double new_grate = (b0 - d0) * (1 + dcell->fitness);
+                dcell->birth_rate = d0 + new_grate;
+                dcell->death_rate = dcell->birth_rate - new_grate;
+                break;
+            }
+            case CHANGE_DEATH: { 
+                double new_grate = (b0 - d0) * (1 + dcell->fitness);
+                double new_drate = (b0 - new_grate);
+                dcell->death_rate = new_drate > dcell->death_rate ? new_drate : dcell->death_rate;
+                dcell->birth_rate = dcell->death_rate + new_grate;
+                break;
+            }
+            case CHANGE_BOTH:{
+                double new_grate = (b0 - d0) * (1 + dcell->fitness);
+                double rn = runiform(r, 0, 1);
+                if(rn < 0.5){
+                    dcell->birth_rate = d0 + new_grate;
+                    dcell->death_rate = dcell->birth_rate - new_grate;
+                }else{               
+                    double new_drate = (b0 - new_grate);
+                    dcell->death_rate = new_drate > dcell->death_rate ? new_drate : dcell->death_rate;
+                    dcell->birth_rate = dcell->death_rate + new_grate;
+                }
+                break;
+            }
+            default: cout << "" << endl;  
+        }  
     }
 
 
@@ -374,7 +412,7 @@ public:
 
                  this->ntot = this->ntot + 2;
 
-                 if(model.fitness != 0){
+                 if(model.model_ID == 1){   // selection
                      if(verbose > 1){
                          cout << "Update the grow parameters of daughter cells " << endl;
                      }

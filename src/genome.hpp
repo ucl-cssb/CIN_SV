@@ -2196,7 +2196,6 @@ void get_merged_interval(int verbose = 0){
 
 
   void get_bps_per_chr_orig(map<int, set<int>>& bps_by_chr, int verbose = 0){
-    // get_unique_interval(verbose);  // should have been called by get_bps_per_chr
     // split regions on same chr to get total CN (for shatterseek input)
     for(auto cnp : cn_by_chr_hap){
       int chr = cnp.first.first;
