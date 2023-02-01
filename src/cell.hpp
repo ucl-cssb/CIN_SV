@@ -1221,10 +1221,10 @@ public:
         }       
         for(auto sg : g->chr_segments){
           for(auto s : sg.second){  
-            string extra = "cn={'c1': {'A': " + to_string(s->cnA) + ", 'B': " + to_string(s->cnB) + "}}";
-            // [) interval to avoid manual overlapping
-            string line = to_string(s->chr + 1) + "\t" + to_string(s->start) + "\t" + to_string(s->end) + "\t" + extra + "\n";
-            cout << line;             
+            // string extra = "cn={'c1': {'A': " + to_string(s->cnA) + ", 'B': " + to_string(s->cnB) + "}}";
+            // // [) interval to avoid manual overlapping
+            // string line = to_string(s->chr + 1) + "\t" + to_string(s->start) + "\t" + to_string(s->end) + "\t" + extra + "\n";
+            // cout << line;             
             int tcn = s->cnA + s->cnB;
             // check arm type
             int arm = 0; // p arm
@@ -1668,6 +1668,24 @@ public:
     //   fout << line;
     //   fout.close();
     // }
+
+
+    void write_cn_bin(string fname_cn, const vector<pos_bin>& bins, int verbose = 0){
+      ofstream fout_cn(fname_cn);
+      string header = "chromosome\tstart\tend\ttotal_cn\tcnA\tcnB\n";
+      fout_cn << header;  
+
+      for(int i = 0; i < bins.size(); i++){
+        pos_bin bin = bins[i];
+        int tcn = g->bin_tcn[i];
+        int cnA = g->bin_cnA[i];
+        int cnB = g->bin_cnB[i];
+        string line = to_string(bin.chr) + "\t" + to_string(bin.start) + "\t" + to_string(bin.end) + "\t" + to_string(tcn) + "\t" + to_string(cnA) + "\t" + to_string(cnB)+ "\n";
+        fout_cn << line;
+      } 
+
+      fout_cn.close(); 
+    }
 
 
     // SVtype (character): type of SV, encoded as: DEL (deletion-like; +/-), DUP (duplication-like; -/+), h2hINV (head-to-head inversion; +/+), and t2tINV (tail-to-tail inversion; -/-).

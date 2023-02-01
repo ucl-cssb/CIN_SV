@@ -12,12 +12,17 @@
 
 #include <boost/format.hpp>
 #include <boost/algorithm/string.hpp>
+#include <boost/accumulators/accumulators.hpp>
+#include <boost/accumulators/statistics/stats.hpp>
+#include <boost/accumulators/statistics/variance.hpp>
 
 #include "util.hpp"
 #include "cell.hpp"
 
 using namespace std;
 
+
+typedef boost::accumulators::accumulator_set<double, boost::accumulators::stats<boost::accumulators::tag::variance>> VARIANCE;
 
 
 // Node of a binary lineage tree, used for sampling certain number of nodes at each side
@@ -145,7 +150,7 @@ public:
     // vector<string> bps; // breakpoints
 
     // double dsb_rate;       // assuming constant mutation rate for one clone
-    // map<int, vector<int>> cnp_all[NUM_LOC];     // store all CNVs in a big array
+    // map<int, vector<int>> cnp_all[num_loc];     // store all CNVs in a big array
     // vector<int> id_by_loc;      // store cell ID sorted by location to facilitate sampling
     // map<int, pair<double, double>> grates;  // birth/death rates for cells with fitness (dis)advantages
 
@@ -456,6 +461,105 @@ public:
 
 
     /*********************** functions related to output **************************/
+
+    // treat single cell data as pseudo-bulk data and compute average ploidy 
+    // distinguish gain/loss to account for different size distribution (not much help)
+    // loc_cn stores the absolute copy numbers for each cell
+    // frac_genome_alt = length(which(x!=y)) / length(x)
+    double get_pga(const map<int, vector<int>>& loc_cn, int num_loc, int is_haplotype = 0){
+        int nsample = loc_cn.size();
+        // cout << "There are " << nsample << " samples" << endl;
+        vector<int> alter_indicator_sep(num_loc, 0);
+        double avg_nalter_sep = 0;
+        int baseline = NORM_PLOIDY;
+        if(is_haplotype){
+            baseline = NORM_PLOIDY / 2;
+        }
+
+        for(auto s : loc_cn){
+            for(int i = 0; i < num_loc; i++){
+                if(s.second[i] != baseline){
+                    alter_indicator_sep[i] += 1;
+                }
+            }
+        }
+
+        // exclude clonal regions
+        for(int i = 0; i < num_loc; i++){
+            if(alter_indicator_sep[i] > 0 && alter_indicator_sep[i] < nsample)
+                avg_nalter_sep++;
+        }
+        // normalized by num_loc to account for different choices of bin size (in real data)
+        avg_nalter_sep = (double) avg_nalter_sep / num_loc;
+
+        return avg_nalter_sep;
+    }
+
+
+    // Divergence of CNAs across cells/clones was quantified by computing their pairwise divergence.
+    // Specifically, this was the proportion of altered bins (copy number not equal to ploidy in either or both samples) that had different copy number in each sample.
+    // ids: The ID of each clone (cell), sorted
+    // loc_cn: the absolute copy numbers of each location (bin) along the genome
+    pair<double, double> get_pairwise_divergence(const vector<int>& ids, map<int, vector<int>>& loc_cn, int num_loc, int is_haplotype = 0, int use_alter = 1, int verbose = 0){
+        int ntotal = 0;
+        vector<double> alters;
+        double avg_alter = 0.0;
+        VARIANCE ppalters;
+        int baseline = NORM_PLOIDY;
+        if(is_haplotype){
+            baseline = NORM_PLOIDY / 2;
+        }
+
+        for(int i = 0; i < ids.size(); i++){
+            vector<int> lchanges1 = loc_cn[ids[i]];
+            for(int j = i + 1; j < ids.size(); j++){
+                ntotal++;
+                vector<int> lchanges2 = loc_cn[ids[j]];
+
+                int num_alter = 0;
+                int num_diff = 0;
+                for(int k = 0; k < num_loc; k++){
+                    if((lchanges1[k]) != baseline || (lchanges2[k]) != baseline){
+                        num_alter++;
+                        if((lchanges2[k]) != (lchanges1[k])){
+                            num_diff++;
+                        }
+                    }
+                }
+                assert(num_alter >= num_diff);
+                double prop_alter = 0.0;
+                // when only altered regions are considered
+                if(use_alter == 1 && num_alter > 0 && num_diff > 0){
+                    prop_alter = (double) num_diff / num_alter;
+                }else{  // use absolute bin size
+                    prop_alter = num_diff;
+                }
+                alters.push_back(prop_alter);
+                ppalters(prop_alter);
+                // cout << num_diff << "\t" << num_alter << "\t" << prop_alter << endl;
+            }
+        }
+
+        for(int i = 0; i < alters.size(); i++){
+            avg_alter += alters[i];
+            // cout << avg_alter << endl;
+        }
+        // alters.size() should equal to ntotal
+        // cout << alters.size() << endl;
+
+        // weird numbers when running on Mac
+        avg_alter = avg_alter / alters.size();
+        double var_alter = boost::accumulators::variance(ppalters);
+
+        if(verbose > 1){
+            cout << "total pairs of glands for computing pairwise divergence " << ntotal << endl;
+        }
+
+        pair<double, double> alt(avg_alter, var_alter);
+
+        return alt;
+    }
+
 
     /*
        This method prints out the copy numbers of each final cell in a clone

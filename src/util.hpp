@@ -15,6 +15,7 @@
 #include <set>
 #include <climits>
 #include <cstdlib>
+// #include <numeric>   // for partial sum
 
 #include <unistd.h>
 
@@ -32,11 +33,20 @@ typedef map<pair<int, int>, int> pcn;   // copy number at a position
 typedef map<pair<int, int>, double> dpcn;   // copy number at a position
 
 
+// A genomic position
+struct pos_bin{
+  int chr;
+  int start;
+  int end;  
+};
+
+
 const int FAIL = 1;
 
 const int NUM_CHR = 22;
 const int NORM_PLOIDY = 2;
-const int NUM_LOC = 5000;
+// const int NUM_LOC = 5000;
+// const int BIN_SIZE = 500000; 
 
 // Number of chromsomes affected in a multipolar event
 const int MULTI_NCHR = 16;
@@ -275,6 +285,39 @@ void read_genome_info(const string& filename, vector<int>& chr_lengths, vector<i
 // read intervals, to facilitate overlap computation
 void read_fragile_sites(const string& filename, vector<int>& fragile_sites){
 
+}
+
+
+// read bins, to be consistent with real data where copy numbers are often binned
+void read_bins(const string& filename, vector<pos_bin>& bins, int verbose = 0){
+  if(verbose) cout << "\nReading bins from " << filename << endl;
+
+  ifstream infile(filename);
+  if(!infile.is_open()){
+    std::cerr << "Error: open of input data unsuccessful: " << filename << std::endl;
+    exit(FAIL);
+  }
+
+  std::string line;
+  getline(infile, line);  // skip header
+  while(!getline(infile, line).eof()){
+    // if(verbose) cout << line << endl;
+    if(line.empty()){
+      continue;
+    }
+    std::vector<std::string> split;
+    std::string buf;
+    stringstream ss(line);
+    while (ss >> buf) split.push_back(buf);
+    assert(split.size() == 3);
+
+    int chr = atoi(split[0].c_str());
+    if(chr > NUM_CHR) break;  
+    int start = atoi(split[1].c_str());
+    int end = atoi(split[2].c_str());
+    pos_bin p{chr, start, end};
+    bins.push_back(p);
+  }
 }
 
 // get the probability matrix for selecting chromosomes

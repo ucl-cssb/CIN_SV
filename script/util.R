@@ -2,8 +2,11 @@
 
 # Get reference centromere and telomere positions
 
-fname = "../data/cytoBand_hg38.txt"
-fout = "../data/ref_size.tsv"
+hgv = "hg19"
+# hgv = "hg38"
+
+fname = paste0("../data/cytoBand_", hgv, ".txt")
+fout = paste0("../data/", hgv, "_size.tsv")
 
 # convert into "chr length boundary (centromere)"
 ref = read.table(fname, header = F)

@@ -24,7 +24,7 @@ int main(int argc, char const *argv[]){
     int chr_prob;
     // string target_chrs;
     string fchr_prob;
-    string fchr;
+    string fchr, fbin;
     int n_local_frag;  // mean number of breakpoints introduced by local fragmentation during mitosis
     double frac_unrepaired_local;
     int div_break;   // ID of division when DSBs occurs
@@ -36,8 +36,8 @@ int main(int argc, char const *argv[]){
     int growth_type;
 
     string outdir, suffix; // output
-    int write_shatterseek, write_rck, write_sumstats, write_genome;
-    int write_sumstats_only;
+    int write_shatterseek, write_rck, write_sumstats, write_genome, write_bin;
+    int bin_level_sumstat; //
 
     unsigned long seed;
     int track_all;
@@ -67,7 +67,7 @@ int main(int argc, char const *argv[]){
       ("chr_prob", po::value<int>(&chr_prob)->default_value(0), "the types of assigning probability of double strand breaks across chromosomes. 0: random; 1: biased; 2: fixed")
       ("circular_prob", po::value<double>(&circular_prob)->default_value(0), "the probability of a frament without centromere and telomeres forming circular DNA (ecDNA)")
       // ("target_chrs", po::value<string>(&target_chrs)->default_value(""), "biased chromosomes to introduce breaks, total number followed by ID of each chromosome")
-      ("fchr_prob", po::value<string>(&fchr_prob)->default_value(""), "the file containing    the probability of double strand breaks on each chromosome")
+      ("fchr_prob", po::value<string>(&fchr_prob)->default_value(""), "the file containing the probability of double strand breaks on each chromosome")
 
       ("birth_rate,b", po::value<double>(&birth_rate)->default_value(1), "birth rate")
       ("death_rate,d", po::value<double>(&death_rate)->default_value(0), "death rate")
@@ -79,6 +79,7 @@ int main(int argc, char const *argv[]){
     optional.add_options()
       // input files which specifies #sampled cells and CNA informaton
       ("fchr", po::value<string>(&fchr)->default_value(""), "TSV file with chromosome size infomation")
+      ("fbin", po::value<string>(&fbin)->default_value(""), "TSV file with bin size infomation")
 
       // options related to model of evolution
       ("model", po::value<int>(&model_ID)->default_value(0), "model of evolution. 0: neutral; 1: selection")
@@ -89,7 +90,9 @@ int main(int argc, char const *argv[]){
 
       // options related to output
       ("suffix", po::value<string>(&suffix)->default_value(""), "suffix of output file")
-      ("write_rck", po::value<int>(&write_rck)->default_value(0), "whether or not to write files in RCCK format")
+      ("bin_level_sumstat", po::value<int>(&bin_level_sumstat)->default_value(0), "whether or not to output summary statistics at bin level")
+      ("write_rck", po::value<int>(&write_rck)->default_value(0), "whether or not to write files in RCK format")
+      ("write_bin", po::value<int>(&write_bin)->default_value(0), "whether or not to write copy numbers in bin format")
       ("write_shatterseek", po::value<int>(&write_shatterseek)->default_value(0), "whether or not to write files for shatterseek")
       ("write_sumstats", po::value<int>(&write_sumstats)->default_value(1), "whether or not to write summary statistics")
       ("write_genome", po::value<int>(&write_genome)->default_value(0), "whether or not to write derivative genome")
@@ -140,6 +143,34 @@ int main(int argc, char const *argv[]){
       get_chr_prob_from_file(fchr_prob, verbose);
     }
 
+    vector<pos_bin> bins;
+    vector<int> bin_number(NUM_CHR, 0);  // store the cumulative number of bins for each chromosome   
+    if(fbin != ""){
+      read_bins(fbin, bins, verbose);
+
+      vector<int> bin_count(NUM_CHR, 0);
+      if(verbose) cout << "There are " << bins.size() << " bins" << endl;
+      for(auto bin : bins){
+        // cout << bin.chr << " " << bin.start << " " << bin.end << endl;
+        if(bin.chr > NUM_CHR) break;
+        assert(bin.chr >= 1);
+        bin_count[bin.chr - 1]++;    // real data starts from chr 1
+      }
+
+      // bin_number[0] = bin_count[0] when calling library function
+      // std::partial_sum(bin_count.begin(), bin_count.end(), bin_number.begin());
+      for(int i = 0; i < NUM_CHR - 1; i++){
+        bin_number[i + 1] = bin_number[i] + bin_count[i];
+      }
+
+      if(verbose){
+        cout << "number of bins for each chromosome" << endl;
+        for(int i = 0; i < bin_count.size(); i++) {
+          cout << i + 1 << "\t" << bin_count[i] << "\t" << bin_number[i] << endl;
+        }        
+      } 
+    }
+    
     // int diff = max_dsb - min_dsb;
     // int rdm = myrng(diff);
     // n_dsb = min_dsb + diff;
@@ -185,10 +216,15 @@ int main(int argc, char const *argv[]){
       ofstream fout(fname_stat_sim);
       fout << "nCell\tnDSB\tnUnrepair\tnComplex\tnMbreak\tnTelofusion\n";
       fout << final_cells.size() << "\t" << n_dsb << "\t" << n_unrepaired << "\t" + to_string(s->n_complex_path) + "\t" + to_string(s->n_path_break) + "\t" + to_string(s->n_telo_fusion) << endl;
-      fout.close();
+      // fout.close();
     }
 
     if(verbose > 0) cout << "\nComputing CN for each cell " << endl;
+    map<int, vector<int>> loc_cn;
+    map<int, vector<int>> loc_cnA;
+    map<int, vector<int>> loc_cnB;
+    vector<int> ids;
+    int num_loc = bins.size();
     for(auto cell : final_cells){
       // verbose = 1;
       if(verbose > 0){
@@ -198,13 +234,24 @@ int main(int argc, char const *argv[]){
       // merge segments with the same CN by haplotype
       cell->g->calculate_segment_cn(bps_by_chr, verbose);
 
+      if(bin_level_sumstat || write_bin){
+        cell->g->get_cn_bin(bins, bin_number, verbose);
+      }
+
       vector<pos_cn> dups;
       vector<pos_cn> dels;
       // seems not necessary as the breakpoints can be telled from copy number segments
       // cell->g->get_pseudo_adjacency(dups, dels, verbose);
       // compute and print summary statistics, used for ABC
-      cell->print_total_summary(dups, dels, verbose);
-
+      if(!bin_level_sumstat){
+        cell->print_total_summary(dups, dels, verbose);
+      }else{
+        loc_cn[cell->cell_ID] = cell->g->bin_tcn;
+        loc_cnA[cell->cell_ID] = cell->g->bin_cnA;
+        loc_cnB[cell->cell_ID] = cell->g->bin_cnB;
+        ids.push_back(cell->cell_ID);
+      }
+      
       // write summary statistics for each cell
       if(write_sumstats){
         if(verbose > 0) cout << "\nWrite output for summary statistics" << endl;
@@ -230,6 +277,12 @@ int main(int argc, char const *argv[]){
         cell->write_genome(fname);
       }
 
+      if(write_bin){
+        if(verbose > 0) cout << "\nWrite copy number in bins of fixed size" << endl;       
+        string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
+        string fname_cn = outdir + "/" + "CNBin_c" + midfix + filetype;
+        cell->write_cn_bin(fname_cn, bins, verbose);
+      }
     }      
     
     // at the end to avoid conflict with merged copy numbers
@@ -262,7 +315,18 @@ int main(int argc, char const *argv[]){
       string fname_tree = outdir + "/" + "cell_lineage.tsv";  
       ofstream fout_lineage(fname_tree);
       s->print_all_cells(s->cells, fout_lineage, verbose);
-      fout_lineage.close();
+      // fout_lineage.close();
+    }
+
+    if(bin_level_sumstat){
+      if(verbose > 0) cout << "summary statistics for " << num_loc << " bins" << endl;
+      double pga = s->get_pga(loc_cn, num_loc);
+      double pgaA = s->get_pga(loc_cnA, num_loc, 1);
+      double pgaB = s->get_pga(loc_cnB, num_loc, 1);
+      pair<double, double> div = s->get_pairwise_divergence(ids, loc_cn, num_loc);
+      pair<double, double> divA = s->get_pairwise_divergence(ids, loc_cn, num_loc, 1);
+      pair<double, double> divB = s->get_pairwise_divergence(ids, loc_cn, num_loc, 1);
+      cout << pga << "\t" << div.first << "\t" << div.second << "\t" << pgaA << "\t" << divA.first << "\t" << divA.second << "\t" << pgaB << "\t" << divB.first << "\t" << divB.second << endl;
     }
 
     delete s;

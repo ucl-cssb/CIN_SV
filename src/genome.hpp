@@ -558,6 +558,9 @@ public:
   map<pair<int, int>, vector<interval>>  cn_by_chr_hap;
   map<pair<int, int>, vector<interval>>  cn_by_chr_hap_merged;
   map<int, vector<segment*>> chr_segments;     // group segments by chr 
+  vector<int> bin_tcn;
+  vector<int> bin_cnA;
+  vector<int> bin_cnB;
 
   map<adj_pos, adj_cn> adjacency_CNs;   // group adjacencies by location 
 
@@ -2225,7 +2228,7 @@ void get_merged_interval(int verbose = 0){
   }
 
 
-  // Compute allele-specific and total copy number
+  // Compute allele-specific and total copy number for non-overlapping segments
   void calculate_segment_cn(map<int, set<int>>& bps_by_chr, int verbose = 0){
     // verbose = 1;
     // assert(this->chr_segments.size() == 0); // only compute once for a cell
@@ -2457,6 +2460,71 @@ void get_merged_interval(int verbose = 0){
             adjacency_CNs[ap] = ac;
           }
         }
+      }
+    }
+
+
+    void get_cn_bin(const vector<pos_bin>& bins, const vector<int>& bin_number, int verbose = 0){
+      vector<int> bin_count(bins.size(), 0);   // used to count number of segments falling into the same bin
+      for(int i = 0; i < bins.size(); i++){
+        bin_tcn.push_back(0);
+        bin_cnA.push_back(0);
+        bin_cnB.push_back(0);
+      } 
+
+      int bin_size = bins[0].end - bins[0].start + 1; // bin size used in copy number calling
+
+      for(auto sg : chr_segments){  
+        for(auto s: sg.second){
+          // compute bin number
+          int start_bin = floor(s->start / bin_size) + bin_number[s->chr];
+          int end_bin = floor(s->end / bin_size) + bin_number[s->chr];
+
+          if(verbose){
+            cout << s->chr + 1 << "\t" << s->start << "\t" << s->end << "\t" << start_bin << "\t" << end_bin << endl;
+          }
+
+          //check bins at the boundaries to compute fraction of coverage      
+          int cov_start = bins[start_bin].end - s->start + 1;
+          bin_cnA[start_bin] += round(s->cnA * cov_start / bin_size);
+          bin_cnB[start_bin] += round(s->cnB * cov_start / bin_size);
+          bin_count[start_bin]++;
+
+          if(end_bin > start_bin){
+            // check bin at chromosome boundaries
+            int cov_end = s->end - bins[end_bin].start + 1;
+            if(CHR_LENGTHS[s->chr] > bins[end_bin].start && CHR_LENGTHS[s->chr] < bins[end_bin].end){
+              int bin_size2 = CHR_LENGTHS[s->chr] - bins[end_bin].start + 1;
+              // cout << "last bin " << CHR_LENGTHS[s->chr] << endl;
+              bin_cnA[end_bin] += round(s->cnA * cov_end / bin_size2);
+              bin_cnB[end_bin] += round(s->cnB * cov_end / bin_size2);
+            }else{
+              bin_cnA[end_bin] += round(s->cnA * cov_end / bin_size);
+              bin_cnB[end_bin] += round(s->cnB * cov_end / bin_size);
+            }           
+
+            bin_count[end_bin]++;
+
+            for(int j = start_bin + 1; j < end_bin; j++){
+              bin_cnA[j] = s->cnA;
+              bin_cnB[j] = s->cnB;
+              bin_count[j]++;
+              if(bin_count[j] > 1){
+                cout << "multiple segments in a bin: " << cov_start << " " << cov_end << " " << j << endl;
+                exit(1);
+              }
+            }
+          }
+        }
+      } 
+      // all segments should have unique positions, so bin_count should be equal to 1
+      // compute average CN for each bin 
+      for(int i = 0; i < bins.size(); i++){
+        if(bin_count[i] == 0 && bin_tcn[i] ==0 && bin_cnA[i] == 0 && bin_cnB[i] == 0){
+          bin_cnA[i] = 1;
+          bin_cnB[i] = 1;
+        }
+        bin_tcn[i] = bin_cnA[i] + bin_cnB[i];
       }
     }
 
