@@ -116,8 +116,8 @@ public:
     double death_rate;
 
     // chr-level and arm-level CNs for computing fitness values
-    vector<int> chr_tcns;
-    vector<int> arm_tcns;
+    vector<double> chr_tcns;
+    vector<double> arm_tcns;
     double surv_prob;   // survival probability
     double fitness;   // selection coefficient as in the classic definition
 
@@ -1175,13 +1175,13 @@ public:
    }
 
 
-    // get average total CN for each chromosome
-    void get_chr_tcn(){
+    // get average total CN for each chromosome, scaled by segment size
+    void get_chr_tcn(int verbose = 0){
         chr_tcns.clear();
-        map<int, vector<int>> chr_cns;
+        map<int, vector<double>> chr_cns;
         // intialize to avoid chromosome loss 
         for(int i = 0; i < NUM_CHR; i++){
-          vector<int> cns;
+          vector<double> cns;
           chr_cns[i] = cns;
         }
         for(auto sg : g->chr_segments){
@@ -1191,17 +1191,26 @@ public:
             // string line = to_string(s->chr + 1) + "\t" + to_string(s->start) + "\t" + to_string(s->end) + "\t" + extra + "\n";
             // cout << line;               
             int tcn = s->cnA + s->cnB;
-            chr_cns[s->chr].push_back(tcn);
+            double weighted_tcn = (double) tcn * (s->end - s->start + 1) / CHR_LENGTHS[s->chr];
+            chr_cns[s->chr].push_back(weighted_tcn);
+            if(verbose > 1) cout << s->chr << "\t" << s->start << "\t" << s->end << "\t" << tcn << "\t" << weighted_tcn << endl;      
           }
         }
         // cout << chr_cns.size() << endl;
         assert(chr_cns.size() == NUM_CHR);
 
         for(auto ct : chr_cns){
-          vector<int> cns = ct.second;
-          int tcn = accumulate(cns.begin(), cns.end(), 0);
-          double acn =  (double) tcn / cns.size();
-          chr_tcns.push_back(round(acn));
+          vector<double> cns = ct.second;
+          double acn = 0.0;
+          if(cns.size() > 0) acn = accumulate(cns.begin(), cns.end(), 0.0);
+          if(verbose > 1){
+            cout << ct.first << "\t";
+            for(auto cn : cns){
+              cout << "\t" << cn;
+            }   
+            cout << "\t" << acn << endl;
+          }           
+          chr_tcns.push_back((acn));
         }
         // cout << chr_tcns.size() << endl;
         assert(chr_tcns.size() == NUM_CHR);
@@ -1209,11 +1218,11 @@ public:
 
 
     // need to determine arm boundary
-    void get_arm_tcn(){
+    void get_arm_tcn(int verbose = 0){
         arm_tcns.clear();
-        map<pair<int, int>, vector<int>> arm_cns;
+        map<pair<int, int>, vector<double>> arm_cns;
         for(int i = 0; i < NUM_CHR; i++){
-          vector<int> cns;
+          vector<double> cns;
           pair<int, int> key(i, 0);
           arm_cns[key] = cns;
           pair<int, int> key1(i, 1);
@@ -1226,24 +1235,45 @@ public:
             // string line = to_string(s->chr + 1) + "\t" + to_string(s->start) + "\t" + to_string(s->end) + "\t" + extra + "\n";
             // cout << line;             
             int tcn = s->cnA + s->cnB;
-            // check arm type
-            int arm = 0; // p arm
-            int ss = s->start;
-            // int se = s->end;
-            int arm_bound = ARM_BOUNDS[s->chr];
-            // for convenience, only consider start position
-            if(ss > arm_bound) arm = 1;
-            pair<int, int> key(s->chr, arm);
-            arm_cns[key].push_back(tcn);
+            pair<int, int> key(s->chr, 0);
+            pair<int, int> key1(s->chr, 1);
+            double weighted_tcn = 0.0;
+            double weighted_tcn1 = 0.0;
+            int seg_size = s->end - s->start + 1;
+            int parm_size = ARM_BOUNDS[s->chr];
+            int qarm_size = CHR_LENGTHS[s->chr] - ARM_BOUNDS[s->chr] + 1;
+            if(s->start < ARM_BOUNDS[s->chr] && s->end < ARM_BOUNDS[s->chr]){
+              weighted_tcn = (double) tcn * seg_size / parm_size;
+              arm_cns[key].push_back(weighted_tcn);
+            }else if(s->start > ARM_BOUNDS[s->chr] && s->end > ARM_BOUNDS[s->chr]){
+              weighted_tcn1 = (double) tcn * seg_size / qarm_size;
+              arm_cns[key1].push_back(weighted_tcn1);             
+            }else{
+              int sizep = ARM_BOUNDS[s->chr] - s->start + 1;
+              weighted_tcn = (double) tcn * sizep / parm_size;
+              arm_cns[key].push_back(weighted_tcn);
+
+              int sizeq = s->end - ARM_BOUNDS[s->chr] + 1;
+              weighted_tcn1 = (double) tcn * sizeq / qarm_size;
+              arm_cns[key1].push_back(weighted_tcn1);                 
+            }   
+            if(verbose > 1) cout << s->chr << "\t" << s->start << "\t" << s->end << "\t" << ARM_BOUNDS[s->chr] << "\t" << tcn << "\t" << weighted_tcn << "\t" << weighted_tcn1 << endl;        
           }
         }
         assert(arm_cns.size() == NUM_CHR * 2);
 
         for(auto ct : arm_cns){
-          vector<int> cns = ct.second;
-          int tcn = accumulate(cns.begin(), cns.end(), 0);
-          double acn =  (double) tcn / cns.size();
-          arm_tcns.push_back(round(acn));
+          vector<double> cns = ct.second;      
+          double acn = 0.0;
+          if(cns.size() > 0) acn = accumulate(cns.begin(), cns.end(), 0.0);
+          if(verbose > 1){
+            cout << ct.first.first << "\t" << ct.first.second;
+            for(auto cn : cns){
+              cout << "\t" << cn;
+            }   
+            cout << "\t" << acn << endl;
+          }          
+          arm_tcns.push_back((acn));
         }
         // cout << arm_tcns.size() << endl;
         assert(arm_tcns.size() == NUM_CHR * 2);      
@@ -1254,18 +1284,19 @@ public:
     void get_surv_prob(int selection_type, int verbose){     
       double score = 0.0;
       if(selection_type == 0){
-        get_chr_tcn();
+        get_chr_tcn(verbose);
         for(int i = 0; i < NUM_CHR; i++){
           score += CHR_SCORE[i] * chr_tcns[i];
+          if(verbose > 1) cout << "chr" << "\t" << CHR_SCORE[i] << "\t" << chr_tcns[i] << endl;
         }
       }else{
-        get_arm_tcn();
-        for(int i = 0; i < NUM_CHR * 2; i += 2){
+        get_arm_tcn(verbose);
+        for(int i = 0; i < NUM_CHR * 2; i++){
           score += ARM_SCORE[i] * arm_tcns[i];
-          score += ARM_SCORE[i + 1] * arm_tcns[i];
+          if(verbose > 1) cout << "chr" << i / 2 << "\tarm" << i % 2 << "\t" << ARM_SCORE[i]  << "\t" << arm_tcns[i] << endl;
         }       
       }
-      if(verbose > 1) cout << "computing survival probability of the cell with selection type " << selection_type << " and original score " << score << endl;
+      if(verbose > 1) cout << "computing survival probability of cell " << cell_ID << " with selection type " << selection_type << " and original score " << score << endl;
       // score can be negative and the probability can be 0
       surv_prob = exp(SURVIVAL_D * score);
     }
@@ -1383,7 +1414,7 @@ public:
       // set<string> pos_dup_by_adj;
       // compute summary statistics based on adjacency
       // get_summary_stats(pos_dup_by_adj, pos_del_by_adj, verbose);
-      get_summary_stats(verbose);
+      // get_summary_stats(verbose);
 
       if(verbose > 1) cout << "appending real DUP/DEL\n";   
       // set<string>::iterator piter;

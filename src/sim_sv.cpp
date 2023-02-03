@@ -243,6 +243,8 @@ int main(int argc, char const *argv[]){
       // seems not necessary as the breakpoints can be telled from copy number segments
       // cell->g->get_pseudo_adjacency(dups, dels, verbose);
       // compute and print summary statistics, used for ABC
+      cell->get_summary_stats(verbose);
+
       if(!bin_level_sumstat){
         cell->print_total_summary(dups, dels, verbose);
       }else{
@@ -324,8 +326,8 @@ int main(int argc, char const *argv[]){
       double pgaA = s->get_pga(loc_cnA, num_loc, 1);
       double pgaB = s->get_pga(loc_cnB, num_loc, 1);
       pair<double, double> div = s->get_pairwise_divergence(ids, loc_cn, num_loc);
-      pair<double, double> divA = s->get_pairwise_divergence(ids, loc_cn, num_loc, 1);
-      pair<double, double> divB = s->get_pairwise_divergence(ids, loc_cn, num_loc, 1);
+      pair<double, double> divA = s->get_pairwise_divergence(ids, loc_cnA, num_loc, 1);
+      pair<double, double> divB = s->get_pairwise_divergence(ids, loc_cnB, num_loc, 1);
       cout << pga << "\t" << div.first << "\t" << div.second << "\t" << pgaA << "\t" << divA.first << "\t" << divA.second << "\t" << pgaB << "\t" << divB.first << "\t" << divB.second << endl;
     }
 
