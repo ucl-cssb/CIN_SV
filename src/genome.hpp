@@ -558,9 +558,9 @@ public:
   map<pair<int, int>, vector<interval>>  cn_by_chr_hap;
   map<pair<int, int>, vector<interval>>  cn_by_chr_hap_merged;
   map<int, vector<segment*>> chr_segments;     // group segments by chr 
-  vector<int> bin_tcn;
-  vector<int> bin_cnA;
-  vector<int> bin_cnB;
+  vector<double> bin_tcn;    // use double to avoid data loss on bins spanning segments
+  vector<double> bin_cnA;
+  vector<double> bin_cnB;
 
   map<adj_pos, adj_cn> adjacency_CNs;   // group adjacencies by location 
 
@@ -569,8 +569,6 @@ public:
   // breaks introduced due to multiple centromeres during mitosis
   // vector<int> vec_n_mitosis_break;  // seem not biologically meaningful
   // map<int, vector<int>> chr_type_num;  // chr, num for each SV type indexed by TYPE
-
-  vector<int> chr_ends;
 
   ~genome(){
     // cout << "start releasing pointers" << endl;
@@ -604,7 +602,7 @@ public:
     int jid = 0;
     int aid = 0;
     int pid = 0;
-    for(int chr = 0; chr < NUM_CHR; chr++){
+    for(int chr = 0; chr < NUM_CHR; chr++){  //  start from 0 for access convenience
       // vec_n_dsb.push_back(0);
       // vector<int> n_sv(NUM_SVTYPE, 0);
       // chr_type_num[chr] = n_sv;
@@ -653,8 +651,6 @@ public:
       p2->edges.push_back(adj2->id);
       validate_path(p2);
       paths[p2->id] = p2;
-
-      chr_ends.insert(chr_ends.end(), {j1->id, j2->id, j3->id, j4->id});
     }
 
     // get_breakpoint_map();
@@ -878,8 +874,20 @@ public:
     breakpoints[j1->id] = j1;
     breakpoints[j2->id] = j2;
 
+    // add new smaller intervals (j1l, j1), (j2, j2r)
+    assert(j1l_id != -1);
+    assert(j2r_id != -1);
+    breakpoint* j1l = breakpoints[j1l_id];
+    breakpoint* j2r = breakpoints[j2r_id];
+    assert(j1l != NULL);
+    assert(j2r != NULL);
+
     if(verbose > 1){
-      cout << "\nadding a new breakpoint " << j1->id << "\t" << j2->id << " at chr " << chr + 1 << " position " << bp << " haplotype " << get_haplotype_string(haplotype) << " between breakpoint " << j1l_id << " and " << j2r_id << endl;
+      cout << "\nadding a new breakpoint " << j1->id << "\t" << j2->id << " at chr " << chr + 1 << " position " << bp << " haplotype " << get_haplotype_string(haplotype) << " between breakpoint " << j1l_id << " and " << j2r_id << endl;         
+      j1->print();
+      j2->print();
+      j1l->print();
+      j2r->print();
     }
 
     // the other side of j1l and j2r are unaffected
@@ -890,14 +898,6 @@ public:
     //
     // vector<breakpoint*> juncs = junc_map[key];
     // sort(juncs.begin(), juncs.end(), compare_bp_pos);
-
-    // add new smaller intervals (j1l, j1), (j2, j2r)
-    assert(j1l_id != -1);
-    assert(j2r_id != -1);
-    breakpoint* j1l = breakpoints[j1l_id];
-    breakpoint* j2r = breakpoints[j2r_id];
-    assert(j1l != NULL);
-    assert(j2r != NULL);
 
     if(reset_pathID){
       j1->path_ID = -1;
@@ -953,43 +953,30 @@ public:
     // }
   }
 
-  // iminate DSB by introducing breakpoints (breakpoints) across the whole genome, following infinite sites assumption
-  // a breakpoint will not disappear once exist
-  // n_dsb: number of breakpoints for each chromosome
-  // TODO: add interval DSB probability based on overlapping with fragile sites
-  void generate_dsb(int n_dsb, int verbose = 0){
-    // group breakpoints by haplotype and chr for sorting
-    // get_breakpoint_map();
-    if(n_dsb <= 0){
-      if(verbose > 1){
-        cout << "NO DSBs in this cycle!" << endl;
-      }      
-      return;
-    }
-    gsl_ran_discrete_t* dis_loc = gsl_ran_discrete_preproc(NUM_CHR, CHR_PROBS);
-    int jid = breakpoints.rbegin()->first + 1;
-    int aid = adjacencies.rbegin()->first + 1;
-    if(verbose > 1){
-      cout << jid << " breakpoints before introducing DSB" << endl;
-    }
 
-    for(int i = 0; i < n_dsb; i++){
-      // a breakpoint may be at centromere or telomere
-      // a chromosome may lost some regions, only feasible on available segments
-      int bp = 0;
-      int chr = -1;
-      int haplotype = -1;
-      int left_jid = -1;
-      int right_jid = -1;
-
-      // available intervals in the haplotype after a new dsb
-      get_unique_interval(verbose);
-
+  // assume all the breakpoints are known, sample without replacement when bins is not empty
+  void get_random_bp(vector<pos_bp>& bps, int& chr, int& bp, int& haplotype, int& left_jid, int& right_jid, int verbose = 0){
       bool is_insertable;
       // keep centromere and telomere intact for simiplicity
       do{
         is_insertable = true;
-        chr = gsl_ran_discrete(r, dis_loc);
+        pos_bp bp_sel;
+        if(bps.size() > 0){
+          if(verbose > 1){ 
+            cout << "random sampling from known breakpoints" << endl;
+          }
+          random_shuffle(bps.begin(), bps.end(), myrng);
+          bp_sel = bps.back();
+          chr = bp_sel.chr - 1;
+          bps.pop_back();          
+        }else{
+          if(verbose > 1){ 
+            cout << "random sampling on the genome" << endl;
+          }          
+          gsl_ran_discrete_t* dis_loc = gsl_ran_discrete_preproc(NUM_CHR, CHR_PROBS);
+          chr = gsl_ran_discrete(r, dis_loc);
+        }
+
         // each chr has two haplotypes, which haplotype the breakpoint is on
         haplotype = myrng(2);
         // cout << " select chr " << chr << " haplotype " << haplotype << endl;
@@ -1012,19 +999,69 @@ public:
         // randomly select an interval
         int sel_intl = (int)runiform(r, 0, nintl);
         interval intl = intls[sel_intl];
-        bp = (int)runiform(r, intl.start, intl.end);
+        if(bps.size() > 0){
+          bp = bp_sel.loc;
+          if(bp < intl.start || bp > intl.end){
+            is_insertable = false;
+            continue;
+          }
+        }else{
+          bp = (int)runiform(r, intl.start, intl.end);      
+        }
+ 
         left_jid = intl.jid_start;
         right_jid = intl.jid_end;
         // cout << "select interval "  << sel_intl << ": " << intl.start << ", " << intl.end  << " at bp " << bp << " with left breakpoint " << left_jid << " and right breakpoint " << right_jid << endl;
 
-      }while(!is_insertable || bp <= TELO_ENDS1[chr] || bp >= TELO_ENDS2[chr] || (bp >= CENT_STARTS[chr] && bp <= CENT_ENDS[chr]));
+      }while(!is_insertable || bp <= TELO_ENDS1[chr] || bp >= TELO_ENDS2[chr] || (bp >= CENT_STARTS[chr] && bp <= CENT_ENDS[chr]));   
+  }
+
+
+  // iminate DSB by introducing breakpoints (breakpoints) across the whole genome, following infinite sites assumption
+  // a breakpoint will not disappear once exist
+  // n_dsb: number of breakpoints for each chromosome
+  // TODO: add interval DSB probability based on overlapping with fragile sites
+  void generate_dsb(int n_dsb, vector<pos_bp>& bps, int verbose = 0){
+    // group breakpoints by haplotype and chr for sorting
+    // get_breakpoint_map();
+    if(n_dsb <= 0){
+      if(verbose > 1){
+        cout << "NO DSBs in this cycle!" << endl;
+      }      
+      return;
+    }
+
+    // if(bps.size() > 0 && bps.size() < n_dsb){
+    //   cout << n_dsb << " DSBs to introduce, but only " << bps.size() << " DSBs in the provided breakpoint file!" << endl;      
+    //   exit(FAIL);
+    // }
+
+    int jid = breakpoints.rbegin()->first + 1;
+    int aid = adjacencies.rbegin()->first + 1;
+    if(verbose > 1){
+      cout << jid << " breakpoints before introducing DSB" << endl;
+    }
+
+    for(int i = 0; i < n_dsb; i++){
+      // a breakpoint may be at centromere or telomere
+      // a chromosome may lost some regions, only feasible on available segments
+      int bp = 0;
+      int chr = -1;
+      int haplotype = -1;
+      int left_jid = -1;
+      int right_jid = -1;
+
+       // available intervals in the haplotype after a new dsb
+      get_unique_interval(verbose);
+
+      get_random_bp(bps, chr, bp, haplotype, left_jid, right_jid, verbose);
 
       // update number of DSBs per chrom per haplotype
       // int idx = chr + haplotype * NUM_CHR;
       // vec_n_dsb[chr] += 1;
 
       if(verbose > 0){
-        cout << "   break " << i + 1 << " at position " << bp << " chr " << chr + 1 << " haplotype " << get_haplotype_string (haplotype) << endl;
+        cout << "   break " << i + 1 << " at position " << bp << " chr " << chr + 1 << " haplotype " << get_haplotype_string(haplotype) << endl;
         if(verbose > 1) cout << "   with left breakpoint " << left_jid << " and right breakpoint " << right_jid << endl;
       }
 
@@ -2467,9 +2504,9 @@ void get_merged_interval(int verbose = 0){
     void get_cn_bin(const vector<pos_bin>& bins, const vector<int>& bin_number, int verbose = 0){
       vector<int> bin_count(bins.size(), 0);   // used to count number of segments falling into the same bin
       for(int i = 0; i < bins.size(); i++){
-        bin_tcn.push_back(0);
-        bin_cnA.push_back(0);
-        bin_cnB.push_back(0);
+        bin_tcn.push_back(0.0);
+        bin_cnA.push_back(0.0);
+        bin_cnB.push_back(0.0);
       } 
 
       int bin_size = bins[0].end - bins[0].start + 1; // bin size used in copy number calling
@@ -2480,29 +2517,24 @@ void get_merged_interval(int verbose = 0){
           int start_bin = floor(s->start / bin_size) + bin_number[s->chr];
           int end_bin = floor(s->end / bin_size) + bin_number[s->chr];
 
-          if(verbose){
-            cout << s->chr + 1 << "\t" << s->start << "\t" << s->end << "\t" << start_bin << "\t" << end_bin << endl;
-          }
-
           //check bins at the boundaries to compute fraction of coverage      
           int cov_start = bins[start_bin].end - s->start + 1;
-          bin_cnA[start_bin] += round(s->cnA * cov_start / bin_size);
-          bin_cnB[start_bin] += round(s->cnB * cov_start / bin_size);
+          bin_cnA[start_bin] += (double) s->cnA * cov_start / bin_size;
+          bin_cnB[start_bin] += (double) s->cnB * cov_start / bin_size;
           bin_count[start_bin]++;
 
           if(end_bin > start_bin){
             // check bin at chromosome boundaries
             int cov_end = s->end - bins[end_bin].start + 1;
+            int cov_size = bin_size;
             if(CHR_LENGTHS[s->chr] > bins[end_bin].start && CHR_LENGTHS[s->chr] < bins[end_bin].end){
-              int bin_size2 = CHR_LENGTHS[s->chr] - bins[end_bin].start + 1;
-              // cout << "last bin " << CHR_LENGTHS[s->chr] << endl;
-              bin_cnA[end_bin] += round(s->cnA * cov_end / bin_size2);
-              bin_cnB[end_bin] += round(s->cnB * cov_end / bin_size2);
-            }else{
-              bin_cnA[end_bin] += round(s->cnA * cov_end / bin_size);
-              bin_cnB[end_bin] += round(s->cnB * cov_end / bin_size);
-            }           
-
+              cov_size = CHR_LENGTHS[s->chr] - bins[end_bin].start + 1;
+              if(verbose > 1) cout << "last bin at chr " << s->chr + 1 << " with length " << CHR_LENGTHS[s->chr] << endl;
+            }       
+            double cnA = (double) s->cnA * cov_end / cov_size;
+            double cnB = (double) s->cnB * cov_end / cov_size;
+            bin_cnA[end_bin] += cnA;
+            bin_cnB[end_bin] += cnB;
             bin_count[end_bin]++;
 
             for(int j = start_bin + 1; j < end_bin; j++){
@@ -2514,6 +2546,13 @@ void get_merged_interval(int verbose = 0){
                 exit(1);
               }
             }
+
+             if(verbose > 1){
+              cout << s->chr + 1 << "\t" << s->start << "\t" << s->end << "\t" << s->cnA << "\t" << s->cnB << "\t" <<  bins[start_bin].start << "\t" << bins[start_bin].end << "\t"  << bins[end_bin].start << "\t"  << bins[end_bin].end << "\t" << cov_start << "\t" << cov_end << "\t" << cnA << "\t" << cnB << endl;
+              for(int j = start_bin; j <= end_bin; j++){
+                cout << bin_cnA[j] << "\t" << bin_cnB[j] << "\t" << bin_count[j] << endl;
+              }
+            }           
           }
         }
       } 

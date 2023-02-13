@@ -122,8 +122,8 @@ public:
     double fitness;   // selection coefficient as in the classic definition
 
     // parameters related to DSB generation
-    // double dsb_rate;  // use exact number for external control over each cell
-    int n_dsb;    // number of double strand breaks during cell division
+    int dsb_rate;  // rate of double strand breaks during cell division
+    int n_dsb;    // number of double strand breaks during cell division, use exact number for external control over each cell
     int n_unrepaired; // number of unrepaired double strand breaks
 
     int n_bp;  // each breakpoint may have at most two connections
@@ -140,7 +140,7 @@ public:
     map<int, vector<int>> chr_type_num;
     map<int, int> chr_n_osc2;
     map<int, int> chr_n_osc3;
-    set<int> bp_unique; // a DBS may introduce two breakpoints with different IDs
+    set<string> bp_unique; // the location of unique breakpoints
     set<vector<int>> dbs_unique; // may be fewer than nDSB + nMbreak due to uneven distribution into daughter cells
 
     genome* g; // each cell has a genome
@@ -165,6 +165,7 @@ public:
         birth_rate = log(2);
         death_rate = 0;
 
+        dsb_rate = 0;
         n_dsb = 0;
         n_unrepaired = 0;
 
@@ -179,6 +180,7 @@ public:
     }         
 
 
+    // used when creating daughter cells
     Cell(int cell_ID, int parent_ID, double time_occur){
         this->cell_ID = cell_ID;
         this->parent_ID = parent_ID;
@@ -189,7 +191,7 @@ public:
         this->g = new genome();
         this->g->cell_ID = cell_ID;
         // this->div_occur = 0;
-        //
+        
         // this->birth_rate = birth_rate;
         // this->death_rate = death_rate;
         //
@@ -202,11 +204,11 @@ public:
         this->n_t2t = 0;
         this->n_tra = 0;
         this->n_circle = 0; 
-        this->n_ecdna = 0;          
+        this->n_ecdna = 0;        
     }
 
 
-    Cell(int cell_ID, int parent_ID, double birth_rate, double death_rate, int n_dsb, int n_unrepaired, double time_occur, int div_break){
+    Cell(int cell_ID, int parent_ID, double birth_rate, double death_rate, int dsb_rate, int n_dsb, int n_unrepaired, double time_occur, int div_break){
         this->cell_ID = cell_ID;
         this->parent_ID = parent_ID;
         this->clone_ID = 0;
@@ -217,6 +219,7 @@ public:
         this->birth_rate = birth_rate;
         this->death_rate = death_rate;
 
+        this->dsb_rate = dsb_rate;
         this->n_dsb  = n_dsb;
         this->n_unrepaired = n_unrepaired;
         this->div_break = div_break;
@@ -254,6 +257,7 @@ public:
         this->birth_rate = ncell.birth_rate;
         this->death_rate = ncell.death_rate;
 
+        this->dsb_rate = ncell.dsb_rate;
         this->n_dsb = ncell.n_dsb;
         this->n_unrepaired = ncell.n_unrepaired;
 
@@ -919,10 +923,10 @@ public:
 
 
     // introduce DSB and repair breaks (adding variant adjacencies)
-    void g1(double frac_unrepaired, double circular_prob, int verbose = 0){
+    void g1(vector<pos_bp>& bps, double frac_unrepaired, double circular_prob, int verbose = 0){
       // verbose = 1;
       if(verbose > 0) cout << "\nIntroducing " << n_dsb << " DSBs" << endl;
-      g->generate_dsb(n_dsb, verbose);
+      g->generate_dsb(n_dsb, bps, verbose);
 
       vector<breakpoint*> junc2repair;
       // connect segments randomly to get variant adjacencies (repair DSBs)
@@ -1042,7 +1046,7 @@ public:
 
 
     // randomly distribute between daughter cells, depend on #centromeres
-    void mitosis(Cell_ptr dcell1, Cell_ptr dcell2, int&  n_complex_path, int& n_path_break, int n_local_frag, double frac_unrepaired, double circular_prob, int verbose = 0){
+    void mitosis(Cell_ptr dcell1, Cell_ptr dcell2, int& n_complex_path, int& n_path_break, int n_local_frag, double frac_unrepaired, double circular_prob, int verbose = 0){
       // verbose = 2;
       if(verbose > 1){
         cout << g->paths.size() << " paths before split (may include duplicated path distributed to daughter cells)" << endl;
@@ -1313,31 +1317,33 @@ public:
 
       for(auto adjm : g->adjacencies){
         adjacency* adj = adjm.second;
+        breakpoint* bp1 = g->breakpoints[adj->junc_id1];
+        breakpoint* bp2 = g->breakpoints[adj->junc_id2];
         int type = adj->sv_type;
         if(adj->type != VAR) continue;   // only need to consider variant adjacencies
-        int chr1 = g->breakpoints[adj->junc_id1]->chr;
-        int chr2 = g->breakpoints[adj->junc_id2]->chr;
+        int chr1 = bp1->chr;
+        int chr2 = bp2->chr;
 
-        int pos1 = g->breakpoints[adj->junc_id1]->pos;
-        int pos2 = g->breakpoints[adj->junc_id2]->pos;
+        int pos1 = bp1->pos;
+        int pos2 = bp2->pos;
 
-        // exclude chromosome ends when counting breakpoints (chr_ends should only appear in intervals)
+        // exclude chromosome ends when counting breakpoints (chr ends based on position should only appear in intervals)
         // each breakpoint connects with just one variant adjacency
-        if(find(g->chr_ends.begin(), g->chr_ends.end(), adj->junc_id1) == g->chr_ends.end()){
+        if(pos1 != 1 && pos1 != CHR_LENGTHS[chr1]){
           n_bp += 1;
-          bp_unique.insert(adj->junc_id1);
+          bp_unique.insert(to_string(chr1) + "_" + to_string(pos1));
          
-          int haplotype1 = g->breakpoints[adj->junc_id1]->haplotype;
+          int haplotype1 = bp1->haplotype;
           vector<int> dbs1{chr1, pos1, haplotype1};
           dbs_unique.insert(dbs1);
           chr_bp_unique[chr1].insert(dbs1);
         }
 
-        if(find(g->chr_ends.begin(), g->chr_ends.end(), adj->junc_id2) == g->chr_ends.end()){
+        if(pos2 != 1 && pos2 != CHR_LENGTHS[chr2]){
           n_bp += 1;
-          bp_unique.insert(adj->junc_id2);
+          bp_unique.insert(to_string(chr2) + "_" + to_string(pos2));
          
-          int haplotype2 = g->breakpoints[adj->junc_id2]->haplotype;
+          int haplotype2 = bp2->haplotype;
           vector<int> dbs2{chr2, pos2, haplotype2};
           dbs_unique.insert(dbs2);
           chr_bp_unique[chr2].insert(dbs2);  // should be unique when counting directly
@@ -1347,8 +1353,8 @@ public:
           if(type != BND){
               cout << "Weird type of adjacency!" << endl;
               adj->print();
-              g->breakpoints[adj->junc_id1]->print();
-              g->breakpoints[adj->junc_id2]->print();
+              bp1->print();
+              bp2->print();
               exit(FAIL);
           }
           chr_type_num[chr1][type] += 1;
@@ -1462,7 +1468,7 @@ public:
     // a whole cycle of cell division
     // duplication and repair of its genome
     // Path IDs are reencoded in the next cell cylce
-    void do_cell_cycle(Cell_ptr dcell1, Cell_ptr dcell2, double frac_unrepaired, int& n_telo_fusion, int& n_complex_path, int& n_path_break, int n_local_frag, double frac_unrepaired_local, double circular_prob, int verbose = 0){
+    void do_cell_cycle(Cell_ptr dcell1, Cell_ptr dcell2, vector<pos_bp>& bps, double frac_unrepaired, int& n_telo_fusion, int& n_complex_path, int& n_path_break, int n_local_frag, double frac_unrepaired_local, double circular_prob, int verbose = 0){
       // verbose = 2;
       // introduces DSBs into the genome prior to G1 repairs
       if(verbose > 1){
@@ -1476,7 +1482,11 @@ public:
         n_dsb = 0;
         n_local_frag = 0;
       }
-      g1(frac_unrepaired, circular_prob, verbose);
+
+      if(dsb_rate > 0){  // different for each cycle
+        n_dsb = gsl_ran_poisson(r, dsb_rate);
+      }    
+      g1(bps, frac_unrepaired, circular_prob, verbose);
 
       if(verbose > 0) cout << "\nSphase and G2" << endl;
       sphase_g2(n_telo_fusion, verbose);
@@ -1708,9 +1718,9 @@ public:
 
       for(int i = 0; i < bins.size(); i++){
         pos_bin bin = bins[i];
-        int tcn = g->bin_tcn[i];
-        int cnA = g->bin_cnA[i];
-        int cnB = g->bin_cnB[i];
+        int tcn = round(g->bin_tcn[i]);
+        int cnA = round(g->bin_cnA[i]);
+        int cnB = round(g->bin_cnB[i]);
         string line = to_string(bin.chr) + "\t" + to_string(bin.start) + "\t" + to_string(bin.end) + "\t" + to_string(tcn) + "\t" + to_string(cnA) + "\t" + to_string(cnB)+ "\n";
         fout_cn << line;
       } 
@@ -1815,8 +1825,10 @@ public:
         cout << "\t birth_rate " << this->birth_rate << endl;
         cout << "\t death_rate " << this->death_rate << endl;
 
+        cout << "\t rate of double strand breaks " << this->dsb_rate << endl;
         cout << "\t number of double strand breaks " << this->n_dsb << endl;
         cout << "\t number of unrepaired breaks " << this->n_unrepaired << endl;
+        cout << "\t number of unique breakpoints " << this->bp_unique.size() << endl;
     }
 
 };

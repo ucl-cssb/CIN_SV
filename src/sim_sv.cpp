@@ -16,7 +16,7 @@ using namespace std;
 int main(int argc, char const *argv[]){
     // int n_cycle;
     int n_cell;
-    int dsb_rate;
+    double dsb_rate;
     // int min_dsb, max_dsb;
     int n_dsb;
     double frac_unrepaired;
@@ -24,7 +24,7 @@ int main(int argc, char const *argv[]){
     int chr_prob;
     // string target_chrs;
     string fchr_prob;
-    string fchr, fbin;
+    string fchr, fbin, fbp;
     int n_local_frag;  // mean number of breakpoints introduced by local fragmentation during mitosis
     double frac_unrepaired_local;
     int div_break;   // ID of division when DSBs occurs
@@ -57,7 +57,7 @@ int main(int argc, char const *argv[]){
       // ("n_cycle", po::value<int>(&n_cycle)->default_value(2), "number of cell cycles") // only meaningful when tracking one child
       ("n_cell,n", po::value<int>(&n_cell)->default_value(2), "size of final population")
       ("div_break", po::value<int>(&div_break)->default_value(0), "maximum ID of cell division when double strand breaks occurs")
-      ("dsb_rate,r", po::value<int>(&dsb_rate)->default_value(0), "constant rate of double strand breaks per division in gradutual evolution")
+      ("dsb_rate,r", po::value<double>(&dsb_rate)->default_value(0), "mean constant rate of double strand breaks per division in gradutual evolution")
       // ("min_dsb", po::value<int>(&min_dsb)->default_value(0), "minimal number of double strand breaks (lower bound of uniform distribution of the number of double strand breaks)")
       // ("max_dsb", po::value<int>(&max_dsb)->default_value(40), "maximal number of double strand breaks (upper bound of uniform distribution of the number of double strand breaks)")
       ("n_dsb", po::value<int>(&n_dsb)->default_value(20), "number of double strand breaks introduced in G1 (in catastrophic events)")
@@ -80,6 +80,7 @@ int main(int argc, char const *argv[]){
       // input files which specifies #sampled cells and CNA informaton
       ("fchr", po::value<string>(&fchr)->default_value(""), "TSV file with chromosome size infomation")
       ("fbin", po::value<string>(&fbin)->default_value(""), "TSV file with bin size infomation")
+      ("fbp", po::value<string>(&fbp)->default_value(""), "TSV file with breakpoint infomation")
 
       // options related to model of evolution
       ("model", po::value<int>(&model_ID)->default_value(0), "model of evolution. 0: neutral; 1: selection")
@@ -170,25 +171,32 @@ int main(int argc, char const *argv[]){
         }        
       } 
     }
+
+    vector<pos_bp> bps;
+    if(fbp != ""){
+      bps = get_bp_from_file(fbp, verbose);
+    }
+    if(verbose > 1) cout << "There are " << bps.size() << " known breakpoints " << endl;
     
     // int diff = max_dsb - min_dsb;
     // int rdm = myrng(diff);
     // n_dsb = min_dsb + diff;
-    if(dsb_rate > 0){
+    if(dsb_rate > 0){  // different for each cycle
       n_dsb = gsl_ran_poisson(r, dsb_rate);
     }
     
     Model start_model(model_ID, selection_type, growth_type);
     int n_unrepaired = round(n_dsb * frac_unrepaired);
-    Cell_ptr start_cell = new Cell(1, 0, birth_rate, death_rate, n_dsb, n_unrepaired, 0, div_break);
+    Cell_ptr start_cell = new Cell(1, 0, birth_rate, death_rate, dsb_rate, n_dsb, n_unrepaired, 0, div_break);
     Clone* s = new Clone(1, 0);
     
     if(verbose > 0) cout << "Start cell growth with " << n_unrepaired << " unrepaired DSBs" << endl;
-    s->grow_with_dsb(start_cell, start_model, n_cell, frac_unrepaired, n_local_frag, frac_unrepaired_local, circular_prob, track_all, verbose);
+    s->grow_with_dsb(start_cell, start_model, n_cell, bps, frac_unrepaired, n_local_frag, frac_unrepaired_local, circular_prob, track_all, verbose);
     if(verbose > 0) cout << "\nFinish cell growth " << endl;
 
     vector<Cell_ptr> final_cells;
     final_cells = s->curr_cells;
+    assert(final_cells.size() == n_cell);
     // if(track_all){
     //   cout << "Tracking all cells" << endl;
     //   final_cells = s->cells;
@@ -220,9 +228,9 @@ int main(int argc, char const *argv[]){
     }
 
     if(verbose > 0) cout << "\nComputing CN for each cell " << endl;
-    map<int, vector<int>> loc_cn;
-    map<int, vector<int>> loc_cnA;
-    map<int, vector<int>> loc_cnB;
+    map<int, vector<double>> loc_cn;
+    map<int, vector<double>> loc_cnA;
+    map<int, vector<double>> loc_cnB;
     vector<int> ids;
     int num_loc = bins.size();
     for(auto cell : final_cells){
@@ -328,7 +336,25 @@ int main(int argc, char const *argv[]){
       pair<double, double> div = s->get_pairwise_divergence(ids, loc_cn, num_loc);
       pair<double, double> divA = s->get_pairwise_divergence(ids, loc_cnA, num_loc, 1);
       pair<double, double> divB = s->get_pairwise_divergence(ids, loc_cnB, num_loc, 1);
-      cout << pga << "\t" << div.first << "\t" << div.second << "\t" << pgaA << "\t" << divA.first << "\t" << divA.second << "\t" << pgaB << "\t" << divB.first << "\t" << divB.second << endl;
+      cout << pga << "\t" << div.first << "\t" << div.second << "\t" << pgaA << "\t" << divA.first << "\t" << divA.second << "\t" << pgaB << "\t" << divB.first << "\t" << divB.second;
+      // get number of new breakpoints locations of all current cells
+      map<int, int> bp_freq;  // bp count: 1 to ncell, bp frequency
+      s->get_bp_freq(final_cells, bp_freq);
+      // based on https://stackoverflow.com/questions/9370945/finding-the-max-value-in-a-map
+      // auto pr = std::max_element(std::begin(bp_freq), std::end(bp_freq), [](const pair<int, int>& p1, const pair<int, int>& p2){ return p1.second < p2.second;});
+      int nbp = accumulate(std::begin(bp_freq), std::end(bp_freq), 0,
+                                          [](const int previous, const std::pair<const int, int>& p)
+                                          { return previous + p.second; });
+      for(auto bpq: bp_freq){
+        // cout << "\t" << bpq.first << "\t" << bpq.second << endl;       
+        // normalize count by the total number of counts to get similar scalce to PGA and DIV
+        double freq = 0;
+        if(nbp > 0){
+          freq = (double) bpq.second / nbp;
+        }
+        cout << "\t" << freq;
+      }
+      cout << endl;
     }
 
     delete s;

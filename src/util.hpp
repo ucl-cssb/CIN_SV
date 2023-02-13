@@ -40,6 +40,17 @@ struct pos_bin{
   int end;  
 };
 
+struct pos_bp{
+  int chr;
+  int loc;
+  int side;   
+
+  bool operator<(pos_bp const &other) const {
+    return (chr < other.chr ||
+      (chr == other.chr && loc < other.loc));
+  }
+};
+
 
 const int FAIL = 1;
 
@@ -383,6 +394,57 @@ void get_chr_prob_from_file(const string& filename, int verbose = 0){
     double len = atof(split[0].c_str());
     CHR_PROBS[i++] = len;
   }
+}
+
+
+// file format: "chr1"    "pos1"    "strand1" "chr2"  "pos2"    "strand2"
+// use set to ensure uniqueness
+vector<pos_bp> get_bp_from_file(const string& filename, int verbose = 0){
+  if(verbose) cout << "\nReading breakpoints from " << filename << endl;
+
+  ifstream infile(filename);
+  if(!infile.is_open()){
+    std::cerr << "Error: open of input data unsuccessful: " << filename << std::endl;
+    exit(FAIL);
+  }
+
+  std::string line;
+  getline(infile, line);  // skip header
+
+  set<pos_bp> bps0;
+  while(!getline(infile, line).eof()){
+    if(verbose) cout << line << endl;
+    if(line.empty()){
+      continue;
+    } 
+    std::vector<std::string> split;
+    std::string buf;
+    stringstream ss(line);
+    while (ss >> buf) split.push_back(buf);
+    assert(split.size() == 6);
+
+    int chr = atoi(split[0].c_str());
+    int pos = atoi(split[1].c_str());
+    string strand = split[2].c_str();
+    int side = 0;
+    if(strand == "-") side = 1;    
+    pos_bp bp{chr, pos, side};
+    bps0.insert(bp);
+
+    chr = atoi(split[3].c_str());
+    pos = atoi(split[4].c_str());
+    strand = split[5].c_str();
+    side = 0;
+    if(strand == "-") side = 1; 
+    pos_bp bp2{chr, pos, side};
+    bps0.insert(bp2);   
+  }
+  if(verbose > 1) cout << "Finish reading " << bps0.size() << " breakpoints " << endl;
+  vector<pos_bp> bps(bps0.size());
+  std::copy(bps0.begin(), bps0.end(), bps.begin());
+  if(verbose > 1) cout << "Finish copying " << bps.size() << " breakpoints " << endl;
+  
+  return bps;
 }
 
 

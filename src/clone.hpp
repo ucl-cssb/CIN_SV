@@ -252,7 +252,7 @@ public:
 
 
     int get_n_dsb(){
-        int sum=0;
+        int sum = 0;
         for (auto cell: curr_cells){
             sum += cell->n_dsb;
         }
@@ -361,7 +361,7 @@ public:
        output:
         a tree-like structure. For each Cell, its children, occurence time, birth rate, death rate
      */
-     void grow_with_dsb(const Cell_ptr ncell, const Model& model, int Nend, double frac_unrepaired, int mean_local_frag, double frac_unrepaired_local, double circular_prob, int track_all = 0, int verbose = 0, int restart = 1, double tend = DBL_MAX){
+     void grow_with_dsb(const Cell_ptr ncell, const Model& model, int Nend, vector<pos_bp>& bps, double frac_unrepaired, int mean_local_frag, double frac_unrepaired_local, double circular_prob, int track_all = 0, int verbose = 0, int restart = 1, double tend = DBL_MAX){
          // Initialize the simulation with one cell
          if(restart == 1) initialize_with_dsb(ncell, model, track_all);
 
@@ -370,8 +370,8 @@ public:
 
          if(verbose > 0) cout << "\nSimulating tumour growth with CNAs under model " << model.model_ID << " at time " << ncell->time_occur + t << endl;
 
-         while(this->curr_cells.size() < Nend) {
-             if (this->curr_cells.size() == 0) {
+         while(this->curr_cells.size() < Nend){
+             if(this->curr_cells.size() == 0){
                  t = 0;
                  nu = 0;
                  initialize_with_dsb(ncell, model, track_all);
@@ -413,7 +413,7 @@ public:
                  dcell2->copy_parent((*rcell));
 
                  // this->n_cycle++;
-                 rcell->do_cell_cycle(dcell1, dcell2, frac_unrepaired, n_telo_fusion, n_complex_path, n_path_break, mean_local_frag, frac_unrepaired_local, circular_prob, verbose);
+                 rcell->do_cell_cycle(dcell1, dcell2, bps, frac_unrepaired, n_telo_fusion, n_complex_path, n_path_break, mean_local_frag, frac_unrepaired_local, circular_prob, verbose);
 
                  this->ntot = this->ntot + 2;
 
@@ -463,10 +463,10 @@ public:
     /*********************** functions related to output **************************/
 
     // treat single cell data as pseudo-bulk data and compute average ploidy 
-    // distinguish gain/loss to account for different size distribution (not much help)
     // loc_cn stores the absolute copy numbers for each cell
     // frac_genome_alt = length(which(x!=y)) / length(x)
-    double get_pga(const map<int, vector<int>>& loc_cn, int num_loc, int is_haplotype = 0){
+    // assume there is no WGD, not a natural product of current simulation
+    double get_pga(const map<int, vector<double>>& loc_cn, int num_loc, int is_haplotype = 0){
         int nsample = loc_cn.size();
         // cout << "There are " << nsample << " samples" << endl;
         vector<int> alter_indicator_sep(num_loc, 0);
@@ -478,15 +478,14 @@ public:
 
         for(auto s : loc_cn){
             for(int i = 0; i < num_loc; i++){
-                if(s.second[i] != baseline){
+                if(round(s.second[i]) != baseline){
                     alter_indicator_sep[i] += 1;
                 }
             }
         }
 
-        // exclude clonal regions
         for(int i = 0; i < num_loc; i++){
-            if(alter_indicator_sep[i] > 0 && alter_indicator_sep[i] < nsample)
+            if(alter_indicator_sep[i] > 0)
                 avg_nalter_sep++;
         }
         // normalized by num_loc to account for different choices of bin size (in real data)
@@ -500,7 +499,7 @@ public:
     // Specifically, this was the proportion of altered bins (copy number not equal to ploidy in either or both samples) that had different copy number in each sample.
     // ids: The ID of each clone (cell), sorted
     // loc_cn: the absolute copy numbers of each location (bin) along the genome
-    pair<double, double> get_pairwise_divergence(const vector<int>& ids, map<int, vector<int>>& loc_cn, int num_loc, int is_haplotype = 0, int use_alter = 1, int verbose = 0){
+    pair<double, double> get_pairwise_divergence(const vector<int>& ids, map<int, vector<double>>& loc_cn, int num_loc, int is_haplotype = 0, int use_alter = 1, int verbose = 0){
         int ntotal = 0;
         vector<double> alters;
         double avg_alter = 0.0;
@@ -511,17 +510,17 @@ public:
         }
 
         for(int i = 0; i < ids.size(); i++){
-            vector<int> lchanges1 = loc_cn[ids[i]];
+            vector<double> lchanges1 = loc_cn[ids[i]];
             for(int j = i + 1; j < ids.size(); j++){
                 ntotal++;
-                vector<int> lchanges2 = loc_cn[ids[j]];
+                vector<double> lchanges2 = loc_cn[ids[j]];
 
                 int num_alter = 0;
                 int num_diff = 0;
                 for(int k = 0; k < num_loc; k++){
-                    if((lchanges1[k]) != baseline || (lchanges2[k]) != baseline){
+                    if(round(lchanges1[k]) != baseline || round(lchanges2[k]) != baseline){
                         num_alter++;
-                        if((lchanges2[k]) != (lchanges1[k])){
+                        if(round(lchanges2[k]) != round(lchanges1[k])){
                             num_diff++;
                         }
                     }
@@ -561,10 +560,30 @@ public:
     }
 
 
+    void get_bp_freq(const vector<Cell_ptr>& cells, map<int, int>& bp_freq){
+      map<string, int> bp_count; // bp location - count
+      for(auto cell : cells){
+        // cell->print_cell_info();
+        for(auto bp: cell->bp_unique){
+          // cout << bp << endl;
+          bp_count[bp]++;
+        }
+      }
+      // get frequency spectrum of new breakpoints locations of all current cells     
+      for(int i = 1; i <= cells.size(); i++){
+        bp_freq[i] = 0;
+      }
+      for(auto bpc: bp_count){
+        // cout << "\t" << bpc.first << "\t" << bpc.second << endl;   
+        assert(bpc.second <= cells.size());   // an unique breakpint appear at most once in a cell    
+        bp_freq[bpc.second]++;
+      }       
+    }
+
     /*
        This method prints out the copy numbers of each final cell in a clone
      */
-    void print_all_cells(vector<Cell_ptr> cells, ofstream& fout, int verbose = 0){
+    void print_all_cells(const vector<Cell_ptr>& cells, ofstream& fout, int verbose = 0){
         int Nend = cells.size();
         if(verbose > 0) cout << "Printing " << Nend << " cells" << endl;
 
