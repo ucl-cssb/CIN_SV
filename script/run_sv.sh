@@ -30,7 +30,7 @@ write_sumstats=1
 
 n_local_frag=0
 
-circular_prob=0.5
+circular_prob=0
 
 outdir=./
 

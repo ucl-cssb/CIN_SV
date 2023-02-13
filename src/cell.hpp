@@ -1477,15 +1477,17 @@ public:
       }
 
       if(verbose > 0) cout << "\nG1 phase" << endl;
+
+      if(dsb_rate > 0){  // different for each cycle
+        n_dsb = gsl_ran_poisson(r, dsb_rate);
+      }  
+      // DSB rate also applies for puncpunctuated events 
       if(div_occur > div_break){
         if(verbose > 1) cout << "No new breaks in division " << div_occur << " in cell " << cell_ID << endl;
         n_dsb = 0;
         n_local_frag = 0;
       }
 
-      if(dsb_rate > 0){  // different for each cycle
-        n_dsb = gsl_ran_poisson(r, dsb_rate);
-      }    
       g1(bps, frac_unrepaired, circular_prob, verbose);
 
       if(verbose > 0) cout << "\nSphase and G2" << endl;

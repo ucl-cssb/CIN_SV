@@ -16,7 +16,7 @@ using namespace std;
 int main(int argc, char const *argv[]){
     // int n_cycle;
     int n_cell;
-    double dsb_rate;
+    double dsb_rate, dsb_rate2;
     // int min_dsb, max_dsb;
     int n_dsb;
     double frac_unrepaired;
@@ -58,9 +58,10 @@ int main(int argc, char const *argv[]){
       ("n_cell,n", po::value<int>(&n_cell)->default_value(2), "size of final population")
       ("div_break", po::value<int>(&div_break)->default_value(0), "maximum ID of cell division when double strand breaks occurs")
       ("dsb_rate,r", po::value<double>(&dsb_rate)->default_value(0), "mean constant rate of double strand breaks per division in gradutual evolution")
+      // ("dsb_rate2,r", po::value<double>(&dsb_rate)->default_value(0), "mean constant rate of double strand breaks per division in gradutual evolution after a punctuated event")
       // ("min_dsb", po::value<int>(&min_dsb)->default_value(0), "minimal number of double strand breaks (lower bound of uniform distribution of the number of double strand breaks)")
       // ("max_dsb", po::value<int>(&max_dsb)->default_value(40), "maximal number of double strand breaks (upper bound of uniform distribution of the number of double strand breaks)")
-      ("n_dsb", po::value<int>(&n_dsb)->default_value(20), "number of double strand breaks introduced in G1 (in catastrophic events)")
+      ("n_dsb", po::value<int>(&n_dsb)->default_value(20), "number of double strand breaks introduced in G1 (in catastrophic events, fixed at each cell cycle)")
       ("frac_unrepaired", po::value<double>(&frac_unrepaired)->default_value(0), "fraction of unrepaired double strand breaks in G1, default: all breaks are repaired")
       ("n_local_frag", po::value<int>(&n_local_frag)->default_value(0), "mean number of double strand breaks introduced by local fragmentation during mitosis")
       ("frac_unrepaired_local", po::value<double>(&frac_unrepaired_local)->default_value(1), "number of unrepaired double strand breaks in local fragmentation during mitosis, default: all breaks are not repaired")
