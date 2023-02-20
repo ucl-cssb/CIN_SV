@@ -176,6 +176,9 @@ public:
         name = "";
         time_end = 0;
         ntot = 0;
+        n_complex_path = 0;
+        n_path_break = 0;
+        n_telo_fusion = 0;
     }
 
 
@@ -185,6 +188,9 @@ public:
         name = cname;
         time_end = time_start;
         ntot = 0;
+        n_complex_path = 0;
+        n_path_break = 0;
+        n_telo_fusion = 0;
     }
 
 
@@ -194,6 +200,9 @@ public:
         name = "";
         time_end = 0;
         ntot = 0;
+        n_complex_path = 0;
+        n_path_break = 0;
+        n_telo_fusion = 0;        
     }
 
 

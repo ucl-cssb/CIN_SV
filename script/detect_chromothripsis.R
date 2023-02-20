@@ -4,12 +4,12 @@
 # require(devtools)
 # install_github("parklab/ShatterSeek")
 
-
 suppressMessages(library(optparse))
 suppressMessages(library(gridExtra))
 suppressMessages(library(cowplot))
 suppressMessages(library(tidyverse))
 suppressMessages(library(ShatterSeek))
+suppressMessages(library(tools))
 
 
 get_chromothripsis <- function(dir, midfix, chr = "1", to_plot = T) {
@@ -85,13 +85,17 @@ option_list <- list(
     type = "character", default = "",
     help = "input file directory [default=%default]", metavar = "character"
   ),
+  make_option(c("-f", "--fsv"),
+    type = "character", default = "",
+    help = "The name of the file containing structural variants [default=%default]", metavar = "character"
+  ),  
   make_option(c("-n", "--div_ID"),
-    type = "integer", default = 1,
-    help = "The number of cell divisions [default=%default]", metavar = "number"
+    type = "character", default = "1",
+    help = "The number of cell divisions [default=%default]", metavar = "character"
   ),
   make_option(c("-c", "--cell_ID"),
-    type = "integer", default = 2,
-    help = "The ID of the cell [default=%default]", metavar = "number"
+    type = "character", default = "2",
+    help = "The ID of the cell [default=%default]", metavar = "character"
   ),
   make_option(c("-r", "--chr"),
               type = "integer", default = 1,
@@ -112,11 +116,17 @@ opt <- parse_args(opt_parser)
 # chr = 22
 
 dir <- opt$dir
+fsv <- opt$fsv
 cell_ID <- opt$cell_ID
 div_ID <- opt$div_ID
 chr <- opt$chr
 
 midfix <- paste0("c", cell_ID, "_div", div_ID)
+if(fsv != ""){
+  bname = tools::file_path_sans_ext(fsv)
+  fields = str_split(bname, "_")[[1]]
+  midfix = paste(fields[2], fields[3], sep = "_")
+}
 
 
 ########## detect chromothripsis
