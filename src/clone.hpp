@@ -107,23 +107,26 @@ public:
     int model_ID;
     int growth_type;   // how cells grow under selection
     int selection_type;
+    double selection_strength;
     double psurv_norm;
 
     Model(){
         model_ID = 0;
         selection_type = 0;
         growth_type = 0;
-        psurv_norm = get_surv_prob_normal_chr();
+        selection_strength = 1;
+        psurv_norm = get_surv_prob_normal_chr(selection_strength);
     }
 
-    Model(int model_ID, int selection_type, int growth_type){
+    Model(int model_ID, int selection_type, double selection_strength, int growth_type){
         this->model_ID = model_ID;
         this->selection_type = selection_type;
+        this->selection_strength = selection_strength;
         this->growth_type = growth_type;
         if(selection_type == 0){
-            psurv_norm = get_surv_prob_normal_chr();
+            psurv_norm = get_surv_prob_normal_chr(selection_strength);
         }else{
-            psurv_norm = get_surv_prob_normal_arm();
+            psurv_norm = get_surv_prob_normal_arm(selection_strength);
         }       
     }
 };
@@ -312,7 +315,7 @@ public:
         dcell->g->get_bps_per_chr(bps_by_chr, verbose);
         dcell->g->calculate_segment_cn(bps_by_chr, verbose);
 
-        dcell->get_surv_prob(model.selection_type, verbose);
+        dcell->get_surv_prob(model.selection_type, model.selection_strength, verbose);
         // the value may be 0
         if(dcell->surv_prob == 0){
             dcell->fitness = -0.999999;
@@ -320,7 +323,7 @@ public:
             dcell->fitness = log(dcell->surv_prob * (1 + dcell->surv_prob)) / log(model.psurv_norm * (1 + model.psurv_norm)) - 1;
         }
         
-        if(verbose > 1){
+        if(verbose > 0){
             cout << "survival probability: " << dcell->surv_prob  << ", selection coefficient: " << dcell->fitness  << endl;
         }
 
@@ -370,7 +373,7 @@ public:
        output:
         a tree-like structure. For each Cell, its children, occurence time, birth rate, death rate
      */
-     void grow_with_dsb(const Cell_ptr ncell, const Model& model, int Nend, vector<pos_bp>& bps, double frac_unrepaired, int mean_local_frag, double frac_unrepaired_local, double circular_prob, int track_all = 0, int verbose = 0, int restart = 1, double tend = DBL_MAX){
+     void grow_with_dsb(const Cell_ptr ncell, const Model& model, int Nend, vector<pos_bp>& bps, double frac_unrepaired, int mean_local_frag, double frac_unrepaired_local, double circular_prob, int pair_type = 0, double prob_correct_repaired = 0, int track_all = 0, int verbose = 0, int restart = 1, double tend = DBL_MAX){
          // Initialize the simulation with one cell
          if(restart == 1) initialize_with_dsb(ncell, model, track_all);
 
@@ -422,7 +425,7 @@ public:
                  dcell2->copy_parent((*rcell));
 
                  // this->n_cycle++;
-                 rcell->do_cell_cycle(dcell1, dcell2, bps, frac_unrepaired, n_telo_fusion, n_complex_path, n_path_break, mean_local_frag, frac_unrepaired_local, circular_prob, verbose);
+                 rcell->do_cell_cycle(dcell1, dcell2, bps, frac_unrepaired, n_telo_fusion, n_complex_path, n_path_break, mean_local_frag, frac_unrepaired_local, circular_prob, pair_type, prob_correct_repaired, verbose);
 
                  this->ntot = this->ntot + 2;
 

@@ -88,7 +88,10 @@ enum Adj_type{INTERVAL, REF, VAR};   // 0: interval, 1: reference, 2: variant
 enum Junc_type{HEAD, TAIL};
 
 
+const double PROB_INTER = 1e-9;
+
 const double SURVIVAL_D = 0.00039047;
+const double SURVIVAL_C = -0.036132164;
 
 // Chromosome and arm scores, taken from Davoli et al.
 const double CHR_SCORE[] = {-0.143640496, 0.638322635, 0.597508197, 0.106407616, -0.785208831, -0.664148445, 3.039521587, 1.650903175, 0.765873656, -1.23443224, 0.210103365,
@@ -178,7 +181,6 @@ double runiform(gsl_rng* r, double a, double b){
   }
   return myrandom;
 }
-
 
 
 // sample an element according to a probability vector
@@ -399,6 +401,8 @@ void get_chr_prob_from_file(const string& filename, int verbose = 0){
 
 // file format: "chr1"    "pos1"    "strand1" "chr2"  "pos2"    "strand2"
 // use set to ensure uniqueness
+// vector<int>& intra_distance: distances of breakpoints on the same chromosome
+// map<int, int>& inter_chrom: connection of different chromosomes
 vector<pos_bp> get_bp_from_file(const string& filename, int verbose = 0){
   if(verbose) cout << "\nReading breakpoints from " << filename << endl;
 
@@ -543,24 +547,26 @@ int find_max_size(int x, const vector<int>& vec){
 
 
   // get survival probability of normal cell (compute once)
-  double get_surv_prob_normal_chr(){
+  double get_surv_prob_normal_chr(double selection_strength){
     double score = 0.0;
     for(int i = 0; i < NUM_CHR; i++){  
       score += CHR_SCORE[i] * 2;
     }
-    double surv_prob = exp(SURVIVAL_D * score);
+    double surv_prob = exp(SURVIVAL_D * score + SURVIVAL_C);
+    surv_prob = pow(surv_prob, selection_strength);
     return surv_prob;
   }
 
 
-  double get_surv_prob_normal_arm(){
+  double get_surv_prob_normal_arm(double selection_strength){
     double score = 0.0;
     for(int i = 0; i < NUM_CHR * 2; i += 2){
         score += ARM_SCORE[i] * 2;
         score += ARM_SCORE[i + 1] * 2;
       }       
 
-    double surv_prob = exp(SURVIVAL_D * score);
+    double surv_prob = exp(SURVIVAL_D * score + SURVIVAL_C);
+    surv_prob = pow(surv_prob, selection_strength);
     return surv_prob;
   }
 

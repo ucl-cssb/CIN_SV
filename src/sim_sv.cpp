@@ -27,6 +27,8 @@ int main(int argc, char const *argv[]){
     string fchr, fbin, fbp;
     int n_local_frag;  // mean number of breakpoints introduced by local fragmentation during mitosis
     double frac_unrepaired_local;
+    int pair_type; // type of joining pair of breakpoints
+    double prob_correct_repaired;
     int div_break;   // ID of division when DSBs occurs
 
     double birth_rate, death_rate;
@@ -34,6 +36,7 @@ int main(int argc, char const *argv[]){
     int model_ID;   
     int selection_type;
     int growth_type;
+    double selection_strength;
 
     string outdir, suffix; // output
     int write_shatterseek, write_rck, write_sumstats, write_genome, write_bin;
@@ -62,9 +65,11 @@ int main(int argc, char const *argv[]){
       // ("min_dsb", po::value<int>(&min_dsb)->default_value(0), "minimal number of double strand breaks (lower bound of uniform distribution of the number of double strand breaks)")
       // ("max_dsb", po::value<int>(&max_dsb)->default_value(40), "maximal number of double strand breaks (upper bound of uniform distribution of the number of double strand breaks)")
       ("n_dsb", po::value<int>(&n_dsb)->default_value(20), "number of double strand breaks introduced in G1 (in catastrophic events, fixed at each cell cycle)")
-      ("frac_unrepaired", po::value<double>(&frac_unrepaired)->default_value(0), "fraction of unrepaired double strand breaks in G1, default: all breaks are repaired")
+      ("frac_unrepaired", po::value<double>(&frac_unrepaired)->default_value(0), "fraction of unrepaired double strand breaks in G1, default: all breaks are repaired.")
       ("n_local_frag", po::value<int>(&n_local_frag)->default_value(0), "mean number of double strand breaks introduced by local fragmentation during mitosis")
       ("frac_unrepaired_local", po::value<double>(&frac_unrepaired_local)->default_value(1), "number of unrepaired double strand breaks in local fragmentation during mitosis, default: all breaks are not repaired")
+      ("pair_type", po::value<int>(&pair_type)->default_value(0), "type of joining pair of breakpoints, default: randomly joined. 1: joining based on distance between breakpoints")  
+      ("prob_correct_repaired", po::value<double>(&prob_correct_repaired)->default_value(0.5), "the probability of correctly repaired double strand breaks in G1")          
       ("chr_prob", po::value<int>(&chr_prob)->default_value(0), "the types of assigning probability of double strand breaks across chromosomes. 0: random; 1: biased; 2: fixed")
       ("circular_prob", po::value<double>(&circular_prob)->default_value(0), "the probability of a frament without centromere and telomeres forming circular DNA (ecDNA)")
       // ("target_chrs", po::value<string>(&target_chrs)->default_value(""), "biased chromosomes to introduce breaks, total number followed by ID of each chromosome")
@@ -86,7 +91,8 @@ int main(int argc, char const *argv[]){
       // options related to model of evolution
       ("model", po::value<int>(&model_ID)->default_value(0), "model of evolution. 0: neutral; 1: selection")
       ("selection_type", po::value<int>(&selection_type)->default_value(0), "types used to define selection strength, 0: chr-level, 1: arm-level")
-      ("growth_type,t", po::value<int>(&growth_type)->default_value(0), "Type of growth when adding selection. 0: only birth; 1: change birth rate; 2: change death rate; 3: change both birth or death rate")
+      ("growth_type,t", po::value<int>(&growth_type)->default_value(0), "type of growth when adding selection. 0: only birth; 1: change birth rate; 2: change death rate; 3: change both birth or death rate")
+       ("selection_strength,d", po::value<double>(&selection_strength)->default_value(1), "strength of selection, the larger the value, the stronger the selection is")
 
       // options related to summary statistics
 
@@ -186,13 +192,13 @@ int main(int argc, char const *argv[]){
       n_dsb = gsl_ran_poisson(r, dsb_rate);
     }
     
-    Model start_model(model_ID, selection_type, growth_type);
+    Model start_model(model_ID, selection_type, selection_strength, growth_type);
     int n_unrepaired = round(n_dsb * frac_unrepaired);
     Cell_ptr start_cell = new Cell(1, 0, birth_rate, death_rate, dsb_rate, n_dsb, n_unrepaired, 0, div_break);
     Clone* s = new Clone(1, 0);
     
     if(verbose > 0) cout << "Start cell growth with " << n_unrepaired << " unrepaired DSBs" << endl;
-    s->grow_with_dsb(start_cell, start_model, n_cell, bps, frac_unrepaired, n_local_frag, frac_unrepaired_local, circular_prob, track_all, verbose);
+    s->grow_with_dsb(start_cell, start_model, n_cell, bps, frac_unrepaired, n_local_frag, frac_unrepaired_local, circular_prob, pair_type, prob_correct_repaired, track_all, verbose);
     if(verbose > 0) cout << "\nFinish cell growth " << endl;
 
     vector<Cell_ptr> final_cells;

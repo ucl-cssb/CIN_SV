@@ -670,10 +670,10 @@ public:
  
     // new_bps: new breakpoints introduced during fragmentation after repairing
     // for simplification, assume all breakpoints are not repaired in mitosis
-    bool path_local_fragmentation(path* p, int n_local_frag, double frac_unrepaired, vector<breakpoint*>& new_bps, int verbose = 0){
+    bool path_local_fragmentation(path* p, int n_local_frag, vector<breakpoint*>& new_bps, int verbose = 0){
         int nbreak = gsl_ran_poisson(r, n_local_frag);   // expected number of breaks, more reasonable with different number of breaks
         // int nbreak = n_local_frag;
-        int nbreak_succ = 0; // real number of breaks
+        int nbreak_succ = 0; // real number of breaks during fragmentation, as some breaks may be infeasible due to constraints
         if(verbose > 1){
           cout << "Fragmentize path " << p->id + 1 << " in cell " << cell_ID << endl;
           p->print();
@@ -777,17 +777,6 @@ public:
             // }
           }
         }
-
-        int n_unrepaired = round(nbreak_succ * frac_unrepaired);
-        if(n_unrepaired < nbreak_succ){  // some got repaired
-            if(verbose > 1) {
-              cout << "repair " << nbreak_succ - n_unrepaired << " breaks duing local fragmentation\n"; 
-            }
-            g->repair_dsb(n_unrepaired, local_bps, verbose);
-            // TOFIX: remove another breakpoint at the end of a path later if repairing is needed
-            new_bps = local_bps;
-        }
-        
         if(nfail == nbreak){  // all trials to add breakpoints failed
           return false;
         }else{
@@ -817,7 +806,7 @@ public:
               }
               // p will be broken into new paths
               vector<breakpoint*> new_bps;
-              bool splited = path_local_fragmentation(p, n_local_frag, frac_unrepaired, new_bps, verbose);
+              bool splited = path_local_fragmentation(p, n_local_frag, new_bps, verbose);
               if(!splited){
                 g->validate_path(p);
                 g->paths[p->id] = p;
@@ -923,7 +912,7 @@ public:
 
 
     // introduce DSB and repair breaks (adding variant adjacencies)
-    void g1(vector<pos_bp>& bps, double frac_unrepaired, double circular_prob, int verbose = 0){
+    void g1(vector<pos_bp>& bps, double frac_unrepaired, double circular_prob, int pair_type = 0, double prob_correct_repaired = 0, int verbose = 0){
       // verbose = 1;
       if(verbose > 0) cout << "\nIntroducing " << n_dsb << " DSBs" << endl;
       g->generate_dsb(n_dsb, bps, verbose);
@@ -946,7 +935,7 @@ public:
       int n_torepair = junc2repair.size() / 2 - n_unrepaired;
       if(verbose > 0) cout << "\nRepairing " << n_torepair << " DSBs" << endl;      
       if(n_torepair > 0){
-        g->repair_dsb(n_unrepaired, junc2repair, verbose);
+        g->repair_dsb(n_unrepaired, junc2repair, pair_type, prob_correct_repaired, verbose);
       }
 
       if(verbose > 1){
@@ -1285,7 +1274,7 @@ public:
 
 
     // according to the formula in Laughney et al, 2015
-    void get_surv_prob(int selection_type, int verbose){     
+    void get_surv_prob(int selection_type, double selection_strength, int verbose){     
       double score = 0.0;
       if(selection_type == 0){
         get_chr_tcn(verbose);
@@ -1293,16 +1282,20 @@ public:
           score += CHR_SCORE[i] * chr_tcns[i];
           if(verbose > 1) cout << "chr" << "\t" << CHR_SCORE[i] << "\t" << chr_tcns[i] << endl;
         }
-      }else{
+        surv_prob = exp(SURVIVAL_D * score + SURVIVAL_C);  
+      }else if(selection_type == 1){
         get_arm_tcn(verbose);
         for(int i = 0; i < NUM_CHR * 2; i++){
           score += ARM_SCORE[i] * arm_tcns[i];
           if(verbose > 1) cout << "chr" << i / 2 << "\tarm" << i % 2 << "\t" << ARM_SCORE[i]  << "\t" << arm_tcns[i] << endl;
-        }       
+        }   
+        surv_prob = exp(SURVIVAL_D * score + SURVIVAL_C);    
+      }else{  // selection based on individual SVs, fitness proportional to SV size
+        cout << "not supported selection type!" << endl;
+        exit(FAIL);
       }
+      surv_prob = pow(surv_prob,  selection_strength);
       if(verbose > 1) cout << "computing survival probability of cell " << cell_ID << " with selection type " << selection_type << " and original score " << score << endl;
-      // score can be negative and the probability can be 0
-      surv_prob = exp(SURVIVAL_D * score);
     }
 
     // summary for the whole genome of each cell, computed from the set of adjacencies
@@ -1468,7 +1461,7 @@ public:
     // a whole cycle of cell division
     // duplication and repair of its genome
     // Path IDs are reencoded in the next cell cylce
-    void do_cell_cycle(Cell_ptr dcell1, Cell_ptr dcell2, vector<pos_bp>& bps, double frac_unrepaired, int& n_telo_fusion, int& n_complex_path, int& n_path_break, int n_local_frag, double frac_unrepaired_local, double circular_prob, int verbose = 0){
+    void do_cell_cycle(Cell_ptr dcell1, Cell_ptr dcell2, vector<pos_bp>& bps, double frac_unrepaired, int& n_telo_fusion, int& n_complex_path, int& n_path_break, int n_local_frag, double frac_unrepaired_local, double circular_prob, int pair_type = 0, double prob_correct_repaired = 0, int verbose = 0){
       // verbose = 2;
       // introduces DSBs into the genome prior to G1 repairs
       if(verbose > 1){
@@ -1488,7 +1481,7 @@ public:
         n_local_frag = 0;
       }
 
-      g1(bps, frac_unrepaired, circular_prob, verbose);
+      g1(bps, frac_unrepaired, circular_prob, pair_type, prob_correct_repaired, verbose);
 
       if(verbose > 0) cout << "\nSphase and G2" << endl;
       sphase_g2(n_telo_fusion, verbose);
