@@ -135,12 +135,17 @@ plot_allele_cn <- function(seg.cn, info.type = "AB", ref_start = 0, ref_end = 0)
   if (info.type == "AB") {
     na_As <- is.na(abs.segments$A)
     max_A <- max(abs.segments$A, na.rm = TRUE)
+    max_B <- max(abs.segments$B, na.rm = TRUE)
+    max_CN = max_A 
+    if(max_B > max_A){
+      max_CN = max_B
+    }    
     abs.segments$A[na_As] <- abs.segments$CNt[na_As]
     plot(x = c(min(abs.segments$abs.start), max(abs.segments$abs.end)),
-         y = c(-0.1, (max_A + 0.1)), type = "n",
+         y = c(-0.1, (max_CN + 0.1)), type = "n",
          ylab = "Copy number", xlab = xlab,
          xaxt = "n",  yaxt = "n", xaxs = "i")
-    axis(labels = 0:max_A, at = 0:max_A, side = 2, line = 0, las = 1)
+    axis(labels = 0:max_CN, at = 0:max_CN, side = 2, line = 0, las = 1)
     segments(x0 = abs.segments$abs.start, x1 = abs.segments$abs.end,
              y0 = (abs.segments$B - 0.1), y1 = (abs.segments$B - 0.1),
              col = "blue", lwd = 5, lend = 1)
@@ -210,12 +215,17 @@ plot_genome_cn <- function(seg.cn, info.type = "T", plot_pos = T) {
   if (info.type == "AB") {
     na_As <- is.na(abs.segments$A)
     max_A <- max(abs.segments$A, na.rm = TRUE)
+    max_B <- max(abs.segments$B, na.rm = TRUE)
+    max_CN = max_A 
+    if(max_B > max_A){
+      max_CN = max_B
+    }
     abs.segments$A[na_As] <- abs.segments$CNt[na_As]
     plot(x = c(min(abs.segments$abs.start), max(abs.segments$abs.end)),
-         y = c(-0.1, (max_A + 0.1)), type = "n",
+         y = c(-0.1, (max_CN + 0.1)), type = "n",
          ylab = "Copy number", xlab = xlab,
          xaxt = "n",  yaxt = "n", xaxs = "i")
-    axis(labels = 0:max_A, at = 0:max_A, side = 2, line = 0, las = 1)
+    axis(labels = 0:max_CN, at = 0:max_CN, side = 2, line = 0, las = 1)
     segments(x0 = abs.segments$abs.start, x1 = abs.segments$abs.end,
              y0 = (abs.segments$B - 0.1), y1 = (abs.segments$B - 0.1),
              col = "blue", lwd = 5, lend = 1)

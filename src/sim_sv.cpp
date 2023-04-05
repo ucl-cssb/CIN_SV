@@ -30,6 +30,7 @@ int main(int argc, char const *argv[]){
     int pair_type; // type of joining pair of breakpoints
     double prob_correct_repaired;
     int div_break;   // ID of division when DSBs occurs
+    int only_repair_new; // only repair new DSBs
 
     double birth_rate, death_rate;
 
@@ -39,7 +40,7 @@ int main(int argc, char const *argv[]){
     double selection_strength;
 
     string outdir, suffix; // output
-    int write_shatterseek, write_rck, write_sumstats, write_genome, write_bin;
+    int write_shatterseek, write_rck, write_sumstats, write_genome, write_bin, write_selection;
     int bin_level_sumstat; //
 
     unsigned long seed;
@@ -71,6 +72,7 @@ int main(int argc, char const *argv[]){
       ("pair_type", po::value<int>(&pair_type)->default_value(0), "type of joining pair of breakpoints, default: randomly joined. 1: joining based on distance between breakpoints")  
       ("prob_correct_repaired", po::value<double>(&prob_correct_repaired)->default_value(0.5), "the probability of correctly repaired double strand breaks in G1")          
       ("chr_prob", po::value<int>(&chr_prob)->default_value(0), "the types of assigning probability of double strand breaks across chromosomes. 0: random; 1: biased; 2: fixed")
+      ("only_repair_new", po::value<int>(&only_repair_new)->default_value(0), "whether or not to only repair new DSBs introduced in each cell cycle")
       ("circular_prob", po::value<double>(&circular_prob)->default_value(0), "the probability of a frament without centromere and telomeres forming circular DNA (ecDNA)")
       // ("target_chrs", po::value<string>(&target_chrs)->default_value(""), "biased chromosomes to introduce breaks, total number followed by ID of each chromosome")
       ("fchr_prob", po::value<string>(&fchr_prob)->default_value(""), "the file containing the probability of double strand breaks on each chromosome")
@@ -104,6 +106,7 @@ int main(int argc, char const *argv[]){
       ("write_shatterseek", po::value<int>(&write_shatterseek)->default_value(0), "whether or not to write files for shatterseek")
       ("write_sumstats", po::value<int>(&write_sumstats)->default_value(1), "whether or not to write summary statistics")
       ("write_genome", po::value<int>(&write_genome)->default_value(0), "whether or not to write derivative genome")
+      ("write_selection", po::value<int>(&write_selection)->default_value(0), "whether or not to write information on selection score for each cell")
 
       ("track_all", po::value<int>(&track_all)->default_value(0), "whether or not to keep track of all cells")
       ("seed", po::value<unsigned long>(&seed)->default_value(0), "seed used for generating random numbers")
@@ -182,22 +185,26 @@ int main(int argc, char const *argv[]){
     vector<pos_bp> bps;
     if(fbp != ""){
       bps = get_bp_from_file(fbp, verbose);
+      n_dsb = bps.size() / 2;
+      if(verbose > 1) cout << "There are " << bps.size() << " known breakpoints " << endl;
     }
-    if(verbose > 1) cout << "There are " << bps.size() << " known breakpoints " << endl;
-    
+      
     // int diff = max_dsb - min_dsb;
     // int rdm = myrng(diff);
     // n_dsb = min_dsb + diff;
-    if(dsb_rate > 0){  // different for each cycle
+    if(dsb_rate > 0 && bps.size() <= 1){  // different for each cycle
       n_dsb = gsl_ran_poisson(r, dsb_rate);
     }
     
     Model start_model(model_ID, selection_type, selection_strength, growth_type);
     int n_unrepaired = round(n_dsb * frac_unrepaired);
-    Cell_ptr start_cell = new Cell(1, 0, birth_rate, death_rate, dsb_rate, n_dsb, n_unrepaired, 0, div_break);
+    Cell_ptr start_cell = new Cell(1, 0, birth_rate, death_rate, dsb_rate, n_dsb, n_unrepaired, 0, div_break, only_repair_new);
     Clone* s = new Clone(1, 0);
     
-    if(verbose > 0) cout << "Start cell growth with " << n_unrepaired << " unrepaired DSBs" << endl;
+    if(verbose > 0){
+      cout << "Start cell growth with " << n_unrepaired << " unrepaired DSBs" << endl;
+      if(n_local_frag > 0) cout << " introducing local fragmentation randomly with mean number of breaks " << n_local_frag << endl;
+    }
     s->grow_with_dsb(start_cell, start_model, n_cell, bps, frac_unrepaired, n_local_frag, frac_unrepaired_local, circular_prob, pair_type, prob_correct_repaired, track_all, verbose);
     if(verbose > 0) cout << "\nFinish cell growth " << endl;
 
@@ -227,11 +234,22 @@ int main(int argc, char const *argv[]){
     string filetype = ".tsv";
     if(write_sumstats){
       // write summary statistics in the simulation
-      string fname_stat_sim = outdir +"/" + "sumStats_sim" + filetype;
+      string fname_stat_sim = outdir + "/" + "sumStats_sim" + filetype;
       ofstream fout(fname_stat_sim);
       fout << "nCell\tnDSB\tnUnrepair\tnComplex\tnMbreak\tnTelofusion\n";
       fout << final_cells.size() << "\t" << n_dsb << "\t" << n_unrepaired << "\t" + to_string(s->n_complex_path) + "\t" + to_string(s->n_path_break) + "\t" + to_string(s->n_telo_fusion) << endl;
       // fout.close();
+    }
+
+    string fname_sel = "";
+    if(model_ID == 1 && write_selection){
+        if(verbose > 0) cout << "\nWrite survival probability and selection coefficient of each cell" << endl;    
+        fname_sel = outdir + "/" + "selection" + filetype;
+        ofstream fout(fname_sel);
+        fout << "cell\tprob_survival\tselection_coef\n";
+        for(auto cell : final_cells){
+          fout << cell->cell_ID  << "\t" << cell->surv_prob << "\t" << cell->fitness << endl;
+        }
     }
 
     if(verbose > 0) cout << "\nComputing CN for each cell " << endl;
@@ -240,6 +258,8 @@ int main(int argc, char const *argv[]){
     map<int, vector<double>> loc_cnB;
     vector<int> ids;
     int num_loc = bins.size();
+
+
     for(auto cell : final_cells){
       // verbose = 1;
       if(verbose > 0){
@@ -278,6 +298,7 @@ int main(int argc, char const *argv[]){
         string fname_stat_chr = outdir +"/" + "sumStats_chrom_c" + midfix + filetype;
         cell->write_summary_stats(fname_stat, fname_stat_chr);
       }
+
       // write CN and SV data to tsv - for ShatterSeek
       if(write_shatterseek){
         if(verbose > 0) cout << "\nWrite output for ShatterSeek" << endl;

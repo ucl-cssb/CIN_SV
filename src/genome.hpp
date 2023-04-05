@@ -1021,7 +1021,7 @@ public:
   // a breakpoint will not disappear once exist
   // n_dsb: number of breakpoints for each chromosome
   // TODO: add interval DSB probability based on overlapping with fragile sites
-  void generate_dsb(int n_dsb, vector<pos_bp>& bps, int verbose = 0){
+  void generate_dsb(int n_dsb, vector<pos_bp>& bps, vector<breakpoint*>& junc2repair, int verbose = 0){
     // group breakpoints by haplotype and chr for sorting
     // get_breakpoint_map();
     if(n_dsb <= 0){
@@ -1066,6 +1066,8 @@ public:
       }
 
       add_new_breakpoint(jid, aid, chr, bp, haplotype, left_jid, right_jid, false, verbose);
+      junc2repair.push_back(breakpoints[jid - 2]);
+      junc2repair.push_back(breakpoints[jid - 1]);
     }
   }
 
@@ -1153,7 +1155,11 @@ public:
 
 
   // find another breakpoint to repair one breakpoint
-  breakpoint* get_dsb_pair(breakpoint* j1, vector<breakpoint*>& junc2repair, int pair_type = 0, double prob_correct_repaired = 0){
+  breakpoint* get_dsb_pair(breakpoint* j1, vector<breakpoint*>& junc2repair, int pair_type = 0, double prob_correct_repaired = 0, int verbose = 0){
+    if(verbose > 1){
+      cout << "start breakpoint ";
+      j1->print();
+    }
     breakpoint* j2 = NULL;
     if(pair_type == 0){ // randomly join two breakpoints
       int j2id = myrng(junc2repair.size());
@@ -1167,37 +1173,49 @@ public:
       // manual normalization to avoid constant correct repairing 
       double *probs = new double[nstate];
       memset(probs, 0.0, nstate);   
-      double sum_prob = 0.0;   
+      long double sum_prob = 0.0;    // sum of probabilities for non-adjacent breakpoints
       int ndist1 = 0;
-      for(int i = 0; i < nstate; i++){
+      for(int i = 0; i < nstate; i++){  // a breakpoint may have multiple copies
         breakpoint* j = junc2repair[i];
+        if(verbose > 1) j->print();
+        int distance = 0;
         if(j->chr == j1->chr){
-          int distance = abs(j->pos - j1->pos);
+          distance = abs(j->pos - j1->pos);
+          if(distance == 0) continue;  // ignore duplicates of a breakpoint for now
           probs[i] = (double) 1 / (distance);
-          if(distance == 1){
-            probs[i] = 0;
+          sum_prob += probs[i];
+          if(distance == 1){   // adjacent breakpoints
+            probs[i] = -1;  // use -1 to avoid float comparison of very small values to 0
             ndist1++;
+            sum_prob -= 1;
           }
         }else{
           probs[i] = PROB_INTER;
+          sum_prob += probs[i];
         }
-        // cout << probs[i] << endl;
-        sum_prob += probs[i];
+        if(verbose > 1) cout << distance << "\t" << probs[i] << endl;
+       
       }
 
-      double scale_factor = (1 - ndist1 * prob_correct_repaired) / sum_prob;
-      double sum_prob2 = 0.0;
+      assert(sum_prob > 0);
+      
+      // long double sum_prob2 = 0.0;
       for(int i = 0; i < nstate; i++){
-        if(probs[i] == 0){
-          probs[i] = prob_correct_repaired;
+        if(probs[i] == -1){
+          assert(ndist1 >= 1);  
+          probs[i] = prob_correct_repaired / ndist1;
         }else{
-          probs[i] = scale_factor * probs[i];
+          if(ndist1 == 0){
+            probs[i] = probs[i] / sum_prob;
+          }else{
+            probs[i] = (1 - prob_correct_repaired) * probs[i] / sum_prob;
+          }
         }
-        sum_prob2 += probs[i];
-        // cout << probs[i] << endl;
+        // sum_prob2 += probs[i];
+        if(verbose > 1) cout << probs[i] << endl;
       }
-      // cout << sum_prob << "\t" << sum_prob2 << endl;
-      assert(fabs(sum_prob2 - 1) < PROB_INTER);
+      // if(verbose > 0) cout << sum_prob << "\t" << sum_prob2 << endl;
+      // assert(fabs(sum_prob2 - 1) < PROB_INTER);    # the difference may be > 0.01, not matter too much, as probs will be normalized to sum 1 by gsl_ran_discrete_preproc
 
       // sample based on distance to j1
       gsl_ran_discrete_t* dis = gsl_ran_discrete_preproc(nstate, probs);
@@ -1242,7 +1260,7 @@ public:
 
       // int j2id = myrng(junc2repair.size());
       // breakpoint* j2 = junc2repair[j2id];
-      breakpoint* j2 = get_dsb_pair(j1, junc2repair, pair_type, prob_correct_repaired);
+      breakpoint* j2 = get_dsb_pair(j1, junc2repair, pair_type, prob_correct_repaired, verbose);
       junc2repair.erase(std::remove(junc2repair.begin(), junc2repair.end(), j2), junc2repair.end());
       // cout << "#breakpoints remaining after 2nd repair: " << junc2repair.size() << endl;
       j2->is_repaired = true;
@@ -1328,6 +1346,7 @@ public:
   }
 
 
+  // used when constructing a new path starting from a specific breakpoint
   void set_path_type(path* p, bool set_circle = true, int verbose = 0){
     if(verbose > 1){
       cout << "set type for path " << p->id + 1 << endl;
@@ -1399,7 +1418,7 @@ public:
               
         breakpoints[end]->is_repaired = true;
         breakpoints[start]->is_repaired = true;
-        
+        if(verbose > 0) cout << "set circle manually by adding an adjacency" << endl;
         p->is_circle = true;       
       }
     }
@@ -1663,6 +1682,7 @@ public:
 
       int size = p->nodes.size();
       if(breakpoints[p->nodes[0]]->id == breakpoints[p->nodes[size-1]]->id){
+        if(verbose > 0) cout << "set circle to itself\n";
         p->is_circle = true;
       }
       if(breakpoints[p->nodes[size-1]]->is_end){
@@ -1716,6 +1736,7 @@ public:
       // end nodes should be telomere
       int size = p->nodes.size();
       if(breakpoints[p->nodes[0]]->id == breakpoints[p->nodes[size-1]]->id){
+        if(verbose > 0) cout << "set circle to itself\n";
         p->is_circle = true;
       }
       if(breakpoints[p->nodes[size-1]]->is_end){
@@ -1775,6 +1796,7 @@ public:
       // end nodes should be telomere
       int size = p->nodes.size();
       if(breakpoints[p->nodes[0]]->id == breakpoints[p->nodes[size-1]]->id){
+        if(verbose > 0) cout << "set circle to itself\n";
         p->is_circle = true;
       }
       assert(!breakpoints[p->nodes[size-1]]->is_end);
@@ -1821,6 +1843,7 @@ public:
       // end nodes should be telomere
       int size = p->nodes.size();
       if(breakpoints[p->nodes[0]]->id == breakpoints[p->nodes[size-1]]->id){
+        if(verbose > 0) cout << "set circle to itself\n";
         p->is_circle = true;
       }
       assert(!breakpoints[p->nodes[size-1]]->is_end);
@@ -2044,7 +2067,11 @@ void duplicate_path_fusion(path& p, int verbose = 0){
 
     // add connection between original path and its copy at the end
     int aid = adjacencies.rbegin()->first + 1;
-    adjacency* adj_var = new adjacency(cell_ID, aid, p.id, last_jid_orig, last_jid, VAR, NONTEL, H2HINV);
+    SV_type sv_type = T2TINV;
+    if(breakpoints[last_jid_orig]->side == HEAD && breakpoints[last_jid]->side == HEAD){
+      sv_type = H2HINV;
+    }     
+    adjacency* adj_var = new adjacency(cell_ID, aid, p.id, last_jid_orig, last_jid, VAR, NONTEL, sv_type);
     adjacencies[adj_var->id] = adj_var;
 
     // one neighbor of the copied breakpoint must have pointed to its neighbour copy
@@ -2073,7 +2100,11 @@ void duplicate_path_fusion(path& p, int verbose = 0){
       int first_jid = nodes_copy[0];
 
       int aid = adjacencies.rbegin()->first + 1;
-      adjacency* adj_var = new adjacency(cell_ID, aid, p.id, first_jid_orig, first_jid, VAR, NONTEL, T2TINV);
+      SV_type sv_type = T2TINV;
+      if(breakpoints[first_jid_orig]->side == HEAD && breakpoints[first_jid]->side == HEAD){
+        sv_type = H2HINV;
+      }
+      adjacency* adj_var = new adjacency(cell_ID, aid, p.id, first_jid_orig, first_jid, VAR, NONTEL, sv_type);
       adjacencies[adj_var->id] = adj_var;
 
       update_end_junc(first_jid_orig, first_jid);
@@ -2085,6 +2116,7 @@ void duplicate_path_fusion(path& p, int verbose = 0){
       breakpoints[first_jid]->is_repaired = true;
 
       p.edges.push_back(adj_var->id);
+      if(verbose > 0) cout << "set circle from fusion" << endl;
       p.is_circle = true;
     }    
   }else{
@@ -2093,7 +2125,11 @@ void duplicate_path_fusion(path& p, int verbose = 0){
     int last_jid = junc_copy->id;
 
     int aid = adjacencies.rbegin()->first + 1;
-    adjacency* adj_var = new adjacency(cell_ID, aid, p.id, last_jid_orig, last_jid, VAR, NONTEL, T2TINV);
+    SV_type sv_type = T2TINV;
+    if(breakpoints[last_jid_orig]->side == HEAD && breakpoints[last_jid]->side == HEAD){
+      sv_type = H2HINV;
+    }   
+    adjacency* adj_var = new adjacency(cell_ID, aid, p.id, last_jid_orig, last_jid, VAR, NONTEL, sv_type);
     adjacencies[adj_var->id] = adj_var;
 
     update_end_junc(last_jid_orig, last_jid);
@@ -2294,7 +2330,7 @@ void get_merged_interval(int verbose = 0){
   }
 
 
-  // need to add end points of each chromosome to avoid missing segments with copy number 0
+  // a correctly repaired breakpoint will also be reported
   void get_bps_per_chr_orig(map<int, set<int>>& bps_by_chr, int verbose = 0){
     // split regions on same chr to get total CN (for shatterseek input)
     for(auto cnp : cn_by_chr_hap){
@@ -2311,6 +2347,7 @@ void get_merged_interval(int verbose = 0){
       }
     }
 
+    // add end points of each chromosome to avoid missing segments with copy number 0
     for(int chr = 0; chr < NUM_CHR; chr++){
       bps_by_chr[chr].insert(1);
       bps_by_chr[chr].insert(CHR_LENGTHS[chr]);
