@@ -983,12 +983,12 @@ public:
 
 
     // introduce DSB and repair breaks (adding variant adjacencies)
-    void g1(vector<pos_bp>& bps, double frac_unrepaired, double circular_prob, int pair_type = 0, double prob_correct_repaired = 0, int verbose = 0){
+    void g1(vector<pos_bp>& bps, vector<double>& bp_fracs, double frac_unrepaired, double circular_prob, int pair_type = 0, double prob_correct_repaired = 0, int verbose = 0){
       // verbose = 1;
       if(verbose > 0) cout << "\nIntroducing " << n_dsb << " DSBs" << endl;
       vector<breakpoint*> junc2repair;
 
-      g->generate_dsb(n_dsb, bps, junc2repair, verbose);
+      g->generate_dsb(n_dsb, bps, bp_fracs, junc2repair, verbose);
       
       // connect segments randomly to get variant adjacencies (repair DSBs)
       // only breakpoints with missing connections need to be repaired
@@ -1539,7 +1539,7 @@ public:
     // a whole cycle of cell division
     // duplication and repair of its genome
     // Path IDs are reencoded in the next cell cylce
-    void do_cell_cycle(Cell_ptr dcell1, Cell_ptr dcell2, vector<pos_bp>& bps, double frac_unrepaired, int& n_telo_fusion, int& n_complex_path, int& n_path_break, int n_local_frag, double frac_unrepaired_local, double circular_prob, int pair_type = 0, double prob_correct_repaired = 0, int verbose = 0){
+    void do_cell_cycle(Cell_ptr dcell1, Cell_ptr dcell2, vector<pos_bp>& bps, vector<double>& bp_fracs, double frac_unrepaired, int& n_telo_fusion, int& n_complex_path, int& n_path_break, int n_local_frag, double frac_unrepaired_local, double circular_prob, int pair_type = 0, double prob_correct_repaired = 0, int verbose = 0){
       // verbose = 2;
       // introduces DSBs into the genome prior to G1 repairs
       if(verbose > 1){
@@ -1559,7 +1559,7 @@ public:
         // n_local_frag = 0;
       }
 
-      g1(bps, frac_unrepaired, circular_prob, pair_type, prob_correct_repaired, verbose);
+      g1(bps, bp_fracs, frac_unrepaired, circular_prob, pair_type, prob_correct_repaired, verbose);
 
       if(verbose > 0) cout << "\nSphase and G2" << endl;
       sphase_g2(n_telo_fusion, verbose);

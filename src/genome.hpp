@@ -955,7 +955,7 @@ public:
 
 
   // assume all the breakpoints are known, sample without replacement when bins is not empty
-  void get_random_bp(vector<pos_bp>& bps, int& chr, int& bp, int& haplotype, int& left_jid, int& right_jid, int verbose = 0){
+  void get_random_bp(vector<pos_bp>& bps, vector<double>& bp_fracs, int& chr, int& bp, int& haplotype, int& left_jid, int& right_jid, int verbose = 0){
       bool is_insertable;
       // keep centromere and telomere intact for simiplicity
       do{
@@ -963,10 +963,13 @@ public:
         pos_bp bp_sel;
         if(bps.size() > 0){
           if(verbose > 1){ 
-            cout << "random sampling from known breakpoints" << endl;
+            cout << "sampling from known breakpoints (by their frequency)" << endl;
           }
-          random_shuffle(bps.begin(), bps.end(), myrng);
-          bp_sel = bps.back();
+          // random_shuffle(bps.begin(), bps.end(), myrng);
+          // bp_sel = bps.back();
+          gsl_ran_discrete_t* dis_bp = gsl_ran_discrete_preproc(bp_fracs.size(), &bp_fracs[0]);
+          int idx = gsl_ran_discrete(r, dis_bp);
+          bp_sel = bps[idx];
           chr = bp_sel.chr - 1;
           bps.pop_back();          
         }else{
@@ -1006,7 +1009,9 @@ public:
             continue;
           }
         }else{
-          bp = (int)runiform(r, intl.start, intl.end);      
+          bp = (int)runiform(r, intl.start, intl.end);  
+          // cout << "Not enough breakpoints to sample!\n";
+          // exit(FAIL);    
         }
  
         left_jid = intl.jid_start;
@@ -1021,7 +1026,7 @@ public:
   // a breakpoint will not disappear once exist
   // n_dsb: number of breakpoints for each chromosome
   // TODO: add interval DSB probability based on overlapping with fragile sites
-  void generate_dsb(int n_dsb, vector<pos_bp>& bps, vector<breakpoint*>& junc2repair, int verbose = 0){
+  void generate_dsb(int n_dsb, vector<pos_bp>& bps, vector<double>& bp_fracs, vector<breakpoint*>& junc2repair, int verbose = 0){
     // group breakpoints by haplotype and chr for sorting
     // get_breakpoint_map();
     if(n_dsb <= 0){
@@ -1054,7 +1059,7 @@ public:
        // available intervals in the haplotype after a new dsb
       get_unique_interval(verbose);
 
-      get_random_bp(bps, chr, bp, haplotype, left_jid, right_jid, verbose);
+      get_random_bp(bps, bp_fracs, chr, bp, haplotype, left_jid, right_jid, verbose);
 
       // update number of DSBs per chrom per haplotype
       // int idx = chr + haplotype * NUM_CHR;
@@ -1157,7 +1162,7 @@ public:
   // find another breakpoint to repair one breakpoint
   breakpoint* get_dsb_pair(breakpoint* j1, vector<breakpoint*>& junc2repair, int pair_type = 0, double prob_correct_repaired = 0, int verbose = 0){
     if(verbose > 1){
-      cout << "start breakpoint ";
+      cout << "start ";
       j1->print();
     }
     breakpoint* j2 = NULL;
@@ -1181,38 +1186,43 @@ public:
         int distance = 0;
         if(j->chr == j1->chr){
           distance = abs(j->pos - j1->pos);
-          if(distance == 0) continue;  // ignore duplicates of a breakpoint for now
-          probs[i] = (double) 1 / (distance);
-          sum_prob += probs[i];
-          if(distance == 1){   // adjacent breakpoints
+          if(distance == 0){  // duplicates of a breakpoint
+            probs[i] = PROB_SELF;
+            sum_prob += probs[i];
+          }else if(distance == 1){   // adjacent breakpoints
             probs[i] = -1;  // use -1 to avoid float comparison of very small values to 0
             ndist1++;
-            sum_prob -= 1;
+          }else{
+            probs[i] = (double) 1 / (distance);
+            sum_prob += probs[i];
           }
         }else{
           probs[i] = PROB_INTER;
           sum_prob += probs[i];
         }
-        if(verbose > 1) cout << distance << "\t" << probs[i] << endl;
-       
+        if(verbose > 1) cout << distance << "\t" << probs[i] << endl;      
       }
 
-      assert(sum_prob > 0);
-      
-      // long double sum_prob2 = 0.0;
-      for(int i = 0; i < nstate; i++){
-        if(probs[i] == -1){
-          assert(ndist1 >= 1);  
-          probs[i] = prob_correct_repaired / ndist1;
-        }else{
-          if(ndist1 == 0){
-            probs[i] = probs[i] / sum_prob;
-          }else{
-            probs[i] = (1 - prob_correct_repaired) * probs[i] / sum_prob;
+      if(sum_prob == 0){  // only breakpoints with the adjacent breakpoint, probably from some duplicates
+          for(int i = 0; i < nstate; i++){
+            probs[i] =  (double) 1 / nstate;
+            if(verbose > 1) cout << probs[i] << endl;
           }
+      }else{
+        for(int i = 0; i < nstate; i++){
+          if(probs[i] == -1){
+            assert(ndist1 >= 1);  
+            probs[i] = prob_correct_repaired / ndist1;
+          }else{
+            if(ndist1 == 0){
+              assert(sum_prob > 0);
+              probs[i] = probs[i] / sum_prob;
+            }else{
+              probs[i] = (1 - prob_correct_repaired) * probs[i] / sum_prob;
+            }
+          }
+          if(verbose > 1) cout << probs[i] << endl;
         }
-        // sum_prob2 += probs[i];
-        if(verbose > 1) cout << probs[i] << endl;
       }
       // if(verbose > 0) cout << sum_prob << "\t" << sum_prob2 << endl;
       // assert(fabs(sum_prob2 - 1) < PROB_INTER);    # the difference may be > 0.01, not matter too much, as probs will be normalized to sum 1 by gsl_ran_discrete_preproc

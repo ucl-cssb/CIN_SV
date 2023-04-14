@@ -26,7 +26,7 @@ typedef boost::accumulators::accumulator_set<double, boost::accumulators::stats<
 
 
 // Node of a binary lineage tree, used for sampling certain number of nodes at each side
-struct node {
+struct node{
     int data;
     node* left;
     node* right;
@@ -168,6 +168,18 @@ public:
 
     int model;  // the model of evolution
 
+    // common parameters for a clone
+    int n_cell;
+    vector<pos_bp> bps; 
+    vector<double> bp_fracs;
+    double frac_unrepaired; 
+    int mean_local_frag; 
+    double frac_unrepaired_local; 
+    double circular_prob; 
+    int pair_type; 
+    double prob_correct_repaired; 
+    int track_all;
+
     // ~Clone() = default;
     Clone(const Clone& other) = default;
     Clone& operator=(const Clone& other) = default;
@@ -205,9 +217,30 @@ public:
         ntot = 0;
         n_complex_path = 0;
         n_path_break = 0;
-        n_telo_fusion = 0;        
+        n_telo_fusion = 0;     
     }
 
+    Clone(int cID, int pID, int n_cell, vector<pos_bp>& bps, vector<double>& bp_fracs, double frac_unrepaired, int mean_local_frag, double frac_unrepaired_local, double circular_prob, int pair_type = 0, double prob_correct_repaired = 0, int track_all = 0){
+        clone_ID = cID;
+        parent_ID = pID;
+        name = "";
+        time_end = 0;
+        ntot = 0;
+        n_complex_path = 0;
+        n_path_break = 0;
+        n_telo_fusion = 0;   
+
+        this->n_cell = n_cell;
+        this->bps = bps; 
+        this->bp_fracs = bp_fracs;
+        this->frac_unrepaired = frac_unrepaired;
+        this->mean_local_frag = mean_local_frag;
+        this->frac_unrepaired_local = frac_unrepaired_local;
+        this->circular_prob = circular_prob;
+        this->pair_type = pair_type;
+        this->prob_correct_repaired = prob_correct_repaired;
+        this->track_all = track_all;    
+    }
 
     ~Clone(){
         // cout << "Only delete available cells " << curr_cells.size() << endl;
@@ -366,14 +399,14 @@ public:
     /*
        This method simulates tumour growth with a rejection-kinetic Monte Carlo algorithm.
        intput:
-        Nend -- the cell population size at the end
+        n_cell -- the cell population size at the end
         ncell -- the starting cell. Given a cell in another clone, it can mimick migragation
         model -- 0: neutral, 1: gradual, 2: punctuated
         restart -- 1: start with a new cell; 0: continue with current state
        output:
         a tree-like structure. For each Cell, its children, occurence time, birth rate, death rate
      */
-     void grow_with_dsb(const Cell_ptr ncell, const Model& model, int Nend, vector<pos_bp>& bps, double frac_unrepaired, int mean_local_frag, double frac_unrepaired_local, double circular_prob, int pair_type = 0, double prob_correct_repaired = 0, int track_all = 0, int verbose = 0, int restart = 1, double tend = DBL_MAX){
+     void grow_with_dsb(const Cell_ptr ncell, const Model& model, int verbose = 0, int restart = 1, double tend = DBL_MAX){
          // Initialize the simulation with one cell
          if(restart == 1) initialize_with_dsb(ncell, model, track_all);
 
@@ -382,7 +415,7 @@ public:
 
          if(verbose > 0) cout << "\nSimulating tumour growth with CNAs under model " << model.model_ID << " at time " << ncell->time_occur + t << endl;
 
-         while(this->curr_cells.size() < Nend){
+         while(this->curr_cells.size() < n_cell){
              if(this->curr_cells.size() == 0){
                  t = 0;
                  nu = 0;
@@ -425,7 +458,7 @@ public:
                  dcell2->copy_parent((*rcell));
 
                  // this->n_cycle++;
-                 rcell->do_cell_cycle(dcell1, dcell2, bps, frac_unrepaired, n_telo_fusion, n_complex_path, n_path_break, mean_local_frag, frac_unrepaired_local, circular_prob, pair_type, prob_correct_repaired, verbose);
+                 rcell->do_cell_cycle(dcell1, dcell2, bps, bp_fracs, frac_unrepaired, n_telo_fusion, n_complex_path, n_path_break, mean_local_frag, frac_unrepaired_local, circular_prob, pair_type, prob_correct_repaired, verbose);
 
                  this->ntot = this->ntot + 2;
 
@@ -596,11 +629,11 @@ public:
        This method prints out the copy numbers of each final cell in a clone
      */
     void print_all_cells(const vector<Cell_ptr>& cells, ofstream& fout, int verbose = 0){
-        int Nend = cells.size();
-        if(verbose > 0) cout << "Printing " << Nend << " cells" << endl;
+        int n_cell = cells.size();
+        if(verbose > 0) cout << "Printing " << n_cell << " cells" << endl;
 
         fout << "cell_ID\tparent_ID\n";
-        for(unsigned int i = 0; i < Nend; i++) {
+        for(unsigned int i = 0; i < n_cell; i++) {
             Cell_ptr cell = cells[i];
             if(cell->parent_ID == 0) continue;
             fout << cell->cell_ID << "\t" << cell->parent_ID << endl;

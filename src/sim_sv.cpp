@@ -183,29 +183,31 @@ int main(int argc, char const *argv[]){
     }
 
     vector<pos_bp> bps;
+    vector<double> bp_fracs;
     if(fbp != ""){
-      bps = get_bp_from_file(fbp, verbose);
-      n_dsb = bps.size() / 2;
-      if(verbose > 1) cout << "There are " << bps.size() << " known breakpoints " << endl;
+      bps = get_bp_from_file(fbp, bp_fracs, verbose);
+      // assert(bps.size() % 2 == 0);  // some breakpoints are duplicated
+      // n_dsb = bps.size() / 2;
+      if(verbose > 1) cout << "There are " << bps.size() << " known breakpoints " << endl; 
     }
       
     // int diff = max_dsb - min_dsb;
     // int rdm = myrng(diff);
     // n_dsb = min_dsb + diff;
-    if(dsb_rate > 0 && bps.size() <= 1){  // different for each cycle
+    if(dsb_rate > 0){  // different for each cycle
       n_dsb = gsl_ran_poisson(r, dsb_rate);
     }
     
     Model start_model(model_ID, selection_type, selection_strength, growth_type);
     int n_unrepaired = round(n_dsb * frac_unrepaired);
     Cell_ptr start_cell = new Cell(1, 0, birth_rate, death_rate, dsb_rate, n_dsb, n_unrepaired, 0, div_break, only_repair_new);
-    Clone* s = new Clone(1, 0);
+    Clone* s = new Clone(1, 0, n_cell, bps, bp_fracs, frac_unrepaired, n_local_frag, frac_unrepaired_local, circular_prob, pair_type, prob_correct_repaired, track_all);
     
     if(verbose > 0){
       cout << "Start cell growth with " << n_unrepaired << " unrepaired DSBs" << endl;
       if(n_local_frag > 0) cout << " introducing local fragmentation randomly with mean number of breaks " << n_local_frag << endl;
     }
-    s->grow_with_dsb(start_cell, start_model, n_cell, bps, frac_unrepaired, n_local_frag, frac_unrepaired_local, circular_prob, pair_type, prob_correct_repaired, track_all, verbose);
+    s->grow_with_dsb(start_cell, start_model, verbose);
     if(verbose > 0) cout << "\nFinish cell growth " << endl;
 
     vector<Cell_ptr> final_cells;

@@ -88,7 +88,10 @@ enum Adj_type{INTERVAL, REF, VAR};   // 0: interval, 1: reference, 2: variant
 enum Junc_type{HEAD, TAIL};
 
 
+const int NCOL_BP_FILE = 7;
+
 const double PROB_INTER = 1e-9;
+const double PROB_SELF = 1e-12;
 
 const double SURVIVAL_D = 0.00039047;
 const double SURVIVAL_C = -0.036132164;
@@ -447,8 +450,9 @@ void get_chr_prob_from_file(const string& filename, int verbose = 0){
 // use set to ensure uniqueness
 // vector<int>& intra_distance: distances of breakpoints on the same chromosome
 // map<int, int>& inter_chrom: connection of different chromosomes
-vector<pos_bp> get_bp_from_file(const string& filename, int verbose = 0){
+vector<pos_bp> get_bp_from_file(const string& filename, vector<double>& bp_fracs, int verbose = 0){
   if(verbose) cout << "\nReading breakpoints from " << filename << endl;
+  bp_fracs.clear();
 
   ifstream infile(filename);
   if(!infile.is_open()){
@@ -459,7 +463,8 @@ vector<pos_bp> get_bp_from_file(const string& filename, int verbose = 0){
   std::string line;
   getline(infile, line);  // skip header
 
-  set<pos_bp> bps0;
+  map<pos_bp, double> bp_freq;
+  set<pos_bp> bps0;  // there may be duplicated breakpoints 
   while(!getline(infile, line).eof()){
     if(verbose) cout << line << endl;
     if(line.empty()){
@@ -469,7 +474,10 @@ vector<pos_bp> get_bp_from_file(const string& filename, int verbose = 0){
     std::string buf;
     stringstream ss(line);
     while (ss >> buf) split.push_back(buf);
-    assert(split.size() == 6);
+    
+    assert(split.size() == NCOL_BP_FILE);
+
+    double freq = atoi(split[6].c_str());
 
     int chr = atoi(split[0].c_str());
     int pos = atoi(split[1].c_str());
@@ -478,6 +486,7 @@ vector<pos_bp> get_bp_from_file(const string& filename, int verbose = 0){
     if(strand == "-") side = 1;    
     pos_bp bp{chr, pos, side};
     bps0.insert(bp);
+    bp_freq[bp] = freq;
 
     chr = atoi(split[3].c_str());
     pos = atoi(split[4].c_str());
@@ -485,11 +494,15 @@ vector<pos_bp> get_bp_from_file(const string& filename, int verbose = 0){
     side = 0;
     if(strand == "-") side = 1; 
     pos_bp bp2{chr, pos, side};
-    bps0.insert(bp2);   
+    bps0.insert(bp2);  
+    bp_freq[bp2] = freq; 
   }
   if(verbose > 1) cout << "Finish reading " << bps0.size() << " breakpoints " << endl;
   vector<pos_bp> bps(bps0.size());
   std::copy(bps0.begin(), bps0.end(), bps.begin());
+  for(auto bp : bps){
+    bp_fracs.push_back(bp_freq[bp]);
+  }
   if(verbose > 1) cout << "Finish copying " << bps.size() << " breakpoints " << endl;
   
   return bps;
