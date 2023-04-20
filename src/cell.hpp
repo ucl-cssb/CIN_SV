@@ -122,8 +122,9 @@ public:
     double surv_prob;   // survival probability
     double fitness;   // selection coefficient as in the classic definition
 
-    // parameters related to DSB generation
-    int dsb_rate;  // rate of double strand breaks during cell division
+    // parameters related to DSB and SV generation
+    double prob_wgd;
+    double dsb_rate;  // rate of double strand breaks during cell division
     int n_dsb;    // number of double strand breaks during cell division, use exact number for external control over each cell
     int n_unrepaired; // number of unrepaired double strand breaks
 
@@ -136,6 +137,7 @@ public:
     int n_circle;
     int n_ecdna;  // circular chromosomes without centromeres
     int n_nocentro;  // linear chromosomes without centromeres
+    double ploidy;  // mean copy number
 
     // count events by chromosome
     map<int, set<vector<int>>> chr_bp_unique;  // use position to be consistent with real data
@@ -167,7 +169,8 @@ public:
         birth_rate = log(2);
         death_rate = 0;
 
-        dsb_rate = 0;
+        prob_wgd = 0.0;
+        dsb_rate = 0.0;
         n_dsb = 0;
         n_unrepaired = 0;
 
@@ -193,13 +196,7 @@ public:
         // build an empty genome to be filled based on parent genome
         this->g = new genome();
         this->g->cell_ID = cell_ID;
-        // this->div_occur = 0;
-        
-        // this->birth_rate = birth_rate;
-        // this->death_rate = death_rate;
-        //
-        // this->dsb_rate = 0;
-        // this->n_dsb  = 0;
+
         this->n_bp = 0;  // each breakpoint may have at most two connections
         this->n_del = 0;
         this->n_dup = 0;
@@ -212,7 +209,7 @@ public:
     }
 
 
-    Cell(int cell_ID, int parent_ID, double birth_rate, double death_rate, int dsb_rate, int n_dsb, int n_unrepaired, double time_occur, int div_break, int only_repair_new){
+    Cell(int cell_ID, int parent_ID, double birth_rate, double death_rate, double prob_wgd, double dsb_rate, int n_dsb, int n_unrepaired, double time_occur, int div_break, int only_repair_new){
         this->cell_ID = cell_ID;
         this->parent_ID = parent_ID;
         this->clone_ID = 0;
@@ -223,7 +220,8 @@ public:
         this->birth_rate = birth_rate;
         this->death_rate = death_rate;
 
-        this->dsb_rate = dsb_rate;
+        this->prob_wgd = prob_wgd;
+        this->dsb_rate = dsb_rate;        
         this->n_dsb  = n_dsb;
         this->n_unrepaired = n_unrepaired;
         this->div_break = div_break;
@@ -263,6 +261,7 @@ public:
         this->birth_rate = ncell.birth_rate;
         this->death_rate = ncell.death_rate;
 
+        this->prob_wgd = ncell.prob_wgd;
         this->dsb_rate = ncell.dsb_rate;
         this->n_dsb = ncell.n_dsb;
         this->n_unrepaired = ncell.n_unrepaired;
@@ -676,9 +675,8 @@ public:
  
     // new_bps: new breakpoints introduced during fragmentation after repairing
     // for simplification, assume all breakpoints are not repaired in mitosis
-    bool path_local_fragmentation(path* p, int n_local_frag, vector<breakpoint*>& new_bps, int verbose = 0){
+    bool path_local_fragmentation(path* p, double n_local_frag, vector<breakpoint*>& new_bps, int verbose = 0){
         int nbreak = gsl_ran_poisson(r, n_local_frag);   // expected number of breaks, more reasonable with different number of breaks
-        // int nbreak = n_local_frag;
         int nbreak_succ = 0; // real number of breaks during fragmentation, as some breaks may be infeasible due to constraints
         if(verbose > 1){
           cout << "Fragmentize path " << p->id + 1 << " in cell " << cell_ID << endl;
@@ -791,7 +789,7 @@ public:
       }
 
 
-    void fragment_path(path* p, int& pid, int n_local_frag, double frac_unrepaired, double circular_prob, Cell_ptr dcell1, Cell_ptr dcell2, int verbose = 0){
+    void fragment_path(path* p, int& pid, double n_local_frag, double frac_unrepaired, double circular_prob, Cell_ptr dcell1, Cell_ptr dcell2, int verbose = 0){
         // p will be broken into new paths
         vector<breakpoint*> new_bps;
         bool splited = path_local_fragmentation(p, n_local_frag, new_bps, verbose);
@@ -825,7 +823,7 @@ public:
 
 
     // called when there are >2 centromeres
-    void split_path_from_bp(int& pid, breakpoint* js, int n_local_frag, double frac_unrepaired, double circular_prob, Cell_ptr dcell1, Cell_ptr dcell2, int verbose = 0){
+    void split_path_from_bp(int& pid, breakpoint* js, double n_local_frag, double frac_unrepaired, double circular_prob, Cell_ptr dcell1, Cell_ptr dcell2, int verbose = 0){
         //  each path will have a unique ID
         path* p = new path(++pid, this->cell_ID, COMPLETE);
         get_path_from_bp(p, js, frac_unrepaired, circular_prob, verbose);
@@ -882,7 +880,7 @@ public:
     // choose breakpoint location so that each path contains one centromere, introduce new breakpoints and form connections
     // assume the path has 2 telomeres at the ends
     // p2split will be split into n_centromere paths, which are distributed randomly
-    void segregate_polycentric(path* p2split, Cell_ptr dcell1, Cell_ptr dcell2, int& pid, int n_local_frag, double frac_unrepaired, double circular_prob, int verbose = 0){
+    void segregate_polycentric(path* p2split, Cell_ptr dcell1, Cell_ptr dcell2, int& pid, double n_local_frag, double frac_unrepaired, double circular_prob, int verbose = 0){
       // verbose = 2;
       if(verbose > 0){
         cout << "\nbreaking a complex path with >1 centromeres" << endl;
@@ -1110,11 +1108,63 @@ public:
     }
 
 
+    void duplicate_genome(Cell_ptr dcell1){
+        dcell1->g->paths = g->paths;
+        dcell1->g->breakpoints = g->breakpoints;
+        dcell1->g->adjacencies = g->adjacencies;
+
+        for(auto paths : dcell1->g->paths){
+          path* path = paths.second;
+          path->cell_ID = dcell1->cell_ID;
+        }
+
+        for(auto bps : dcell1->g->breakpoints){
+          breakpoint* bp = bps.second;
+          bp->cell_ID = dcell1->cell_ID;
+        } 
+
+        for(auto adjs : dcell1->g->adjacencies){
+          adjacency* adj = adjs.second;
+          adj->cell_ID = dcell1->cell_ID;
+        }    
+
+        g->paths.clear(); 
+        g->breakpoints.clear();   
+        g->adjacencies.clear();       
+    }
+
+
     // randomly distribute between daughter cells, depend on #centromeres
-    void mitosis(Cell_ptr dcell1, Cell_ptr dcell2, int& n_complex_path, int& n_path_break, int n_local_frag, double frac_unrepaired, double circular_prob, int verbose = 0){
+    void mitosis(Cell_ptr dcell1, Cell_ptr dcell2, int& n_complex_path, int& n_path_break, double n_local_frag, double frac_unrepaired_local, double circular_prob, int verbose = 0){
       // verbose = 2;
       if(verbose > 1){
         cout << g->paths.size() << " paths before split (may include duplicated path distributed to daughter cells)" << endl;
+      }
+
+      double u = runiform(r, 0, 1);
+      if(u < prob_wgd){
+        if(verbose > 0){
+          cout << "WGD of cell " << cell_ID  << " with sampled probability " << u <<endl;
+        }        
+        double u2 = runiform(r, 0, 1);
+        if(u2 < 0.5){
+          duplicate_genome(dcell1);
+          dcell2->birth_rate = 0;
+          dcell2->death_rate = 1;
+        }else{
+          duplicate_genome(dcell2);
+          dcell1->birth_rate = 0;
+          dcell1->death_rate = 1;          
+        }
+        
+        if(verbose > 1){
+          // path ID follows those from parent cell
+          cout << "\n#path after WGD in 1st daughter cell: " << dcell1->g->paths.size() << endl;
+          dcell1->print_paths();
+          cout << "\n#path after WGD in 2nd daughter cell: " << dcell2->g->paths.size() << endl;
+          dcell2->print_paths();
+        }
+        return;
       }
 
       // get the max Path ID to define new IDs for random distribution
@@ -1160,7 +1210,7 @@ public:
           if(verbose > 0) cout << "\ncomplex distribution of path " << p->id + 1 << " with >1 centromeres in cell " << cell_ID << endl;
           n_complex_path += 1;
           n_path_break += p->n_centromere - 1; 
-          segregate_polycentric(p, dcell1, dcell2, max_pID, n_local_frag, frac_unrepaired, circular_prob, verbose);
+          segregate_polycentric(p, dcell1, dcell2, max_pID, n_local_frag, frac_unrepaired_local, circular_prob, verbose);
           if(verbose > 0) cout << "\nFinish complex splitting\n" << endl;
         }
       }
@@ -1175,6 +1225,37 @@ public:
     }
 
 
+    // taking the most common copy number state
+    void get_ploidy(int bin_level_sumstat, int verbose = 0){
+      if(verbose > 1) cout << "compute ploidy\n";
+      vector<int> tcns;
+
+
+      if(bin_level_sumstat){
+        for(int i = 0; i < g->bin_tcn.size(); i++){
+          int tcn = round(g->bin_tcn[i]);
+          tcns.push_back(tcn);  
+        }
+      }else{
+        // should consider size of CNAs when using segments
+        for(int chr = 0; chr < NUM_CHR; chr++){
+          for(auto s : g->chr_segments[chr]){
+            int tcn = s->cnA + s->cnB;
+            // split tcn by potential number of bins 
+            int size = s->end - s->start + 1;
+            int nbin = size / BIN_SIZE;
+            for(int i = 0; i < nbin; i++){
+              tcns.push_back(tcn); 
+            }                    
+          }
+        }
+      }
+
+
+      // double sum_cn = accumulate(tcns.begin(), tcns.end(), 0.0);
+      // ploidy = sum_cn / tcns.size();
+      ploidy = get_mode(tcns);
+    }
 
     // assume segments have been generated
     // count number of oscillating CNs by chromosome
@@ -1470,7 +1551,7 @@ public:
       for(auto pp : g->paths){
         path* p = pp.second;
 
-        if(p->n_centromere > 1){
+        if(p->n_centromere > 1 && prob_wgd == 0){
           cout << "Path " << p->id + 1 << " has " << p->n_centromere << " centromeres!" << endl;
           p->print();
           exit(FAIL);
@@ -1539,7 +1620,7 @@ public:
     // a whole cycle of cell division
     // duplication and repair of its genome
     // Path IDs are reencoded in the next cell cylce
-    void do_cell_cycle(Cell_ptr dcell1, Cell_ptr dcell2, vector<pos_bp>& bps, vector<double>& bp_fracs, double frac_unrepaired, int& n_telo_fusion, int& n_complex_path, int& n_path_break, int n_local_frag, double frac_unrepaired_local, double circular_prob, int pair_type = 0, double prob_correct_repaired = 0, int verbose = 0){
+    void do_cell_cycle(Cell_ptr dcell1, Cell_ptr dcell2, vector<pos_bp>& bps, vector<double>& bp_fracs, double frac_unrepaired, int& n_telo_fusion, int& n_complex_path, int& n_path_break, double n_local_frag, double frac_unrepaired_local, double circular_prob, int pair_type = 0, double prob_correct_repaired = 0, int verbose = 0){
       // verbose = 2;
       // introduces DSBs into the genome prior to G1 repairs
       if(verbose > 1){
@@ -1734,7 +1815,7 @@ public:
 
 
     // Assume the summary statistics have been computed
-    void write_summary_stats(string fname, string fname_chr){     
+    void write_summary_stats(string fname, string fname_chr, int bin_level_sumstat, int verbose = 0){     
       assert(dbs_unique.size() >= 0);
       assert(bp_unique.size() >= 0);
       assert(chr_bp_unique.size() >= 0);
@@ -1743,7 +1824,7 @@ public:
       // writing summary statistics for all chromosomes
       ofstream fout(fname);
       // nBP includes chromosome ends
-      fout << "cycleID\tcellID\tnDSB\tnUnrepair\tnDBS_unique\tnBP_unique\tnBP\tnDel\tnDup\tnH2HInv\tnT2TInv\tnTra\tnCircle\tnECDNA\tnNoCentromere\n";
+      fout << "cycleID\tcellID\tnDSB\tnUnrepair\tnDBS_unique\tnBP_unique\tnBP\tnDel\tnDup\tnH2HInv\tnT2TInv\tnTra\tnCircle\tnECDNA\tnNoCentromere\tploidy\n";
       // writing summary statistics for each chromosome
       ofstream fout_chr(fname_chr);
       fout_chr << "cycleID\tcellID\tchr\tnBP\tnDel\tnDup\tnH2HInv\tnT2TInv\tnTra\n";
@@ -1752,7 +1833,10 @@ public:
       //   cout << dbs[0] << "\t" << dbs[1] << "\t" << dbs[2] << "\n";
       // }
 
-      fout << to_string(div_occur) + "\t" + to_string(cell_ID) + "\t" + to_string(n_dsb) + "\t" + to_string(n_unrepaired)  + "\t" + to_string(dbs_unique.size()) + "\t" + to_string(bp_unique.size()) + "\t" + to_string(n_bp) + "\t" + to_string(n_del) + "\t" + to_string(n_dup) + "\t" + to_string(n_h2h) + "\t" + to_string(n_t2t)  + "\t" + to_string(n_tra) + "\t" + to_string(n_circle) + "\t" + to_string(n_ecdna) + "\t" + to_string(n_nocentro) +"\n";
+      get_ploidy(bin_level_sumstat, verbose);
+
+      fout << to_string(div_occur) + "\t" + to_string(cell_ID) + "\t" + to_string(n_dsb) + "\t" + to_string(n_unrepaired)  + "\t" + to_string(dbs_unique.size()) + "\t" + to_string(bp_unique.size()) + "\t" + to_string(n_bp) + "\t" + to_string(n_del) + "\t" + to_string(n_dup) + "\t" + to_string(n_h2h) + "\t" + to_string(n_t2t)  + "\t" + to_string(n_tra) + "\t" + to_string(n_circle) + "\t" + to_string(n_ecdna) + "\t" + to_string(n_nocentro) + "\t" + to_string(ploidy) + "\n";
+
       fout.close();
 
       for(int i = 0; i < NUM_CHR; i++){

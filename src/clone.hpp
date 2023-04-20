@@ -173,7 +173,7 @@ public:
     vector<pos_bp> bps; 
     vector<double> bp_fracs;
     double frac_unrepaired; 
-    int mean_local_frag; 
+    double mean_local_frag; 
     double frac_unrepaired_local; 
     double circular_prob; 
     int pair_type; 
@@ -220,7 +220,7 @@ public:
         n_telo_fusion = 0;     
     }
 
-    Clone(int cID, int pID, int n_cell, vector<pos_bp>& bps, vector<double>& bp_fracs, double frac_unrepaired, int mean_local_frag, double frac_unrepaired_local, double circular_prob, int pair_type = 0, double prob_correct_repaired = 0, int track_all = 0){
+    Clone(int cID, int pID, int n_cell, vector<pos_bp>& bps, vector<double>& bp_fracs, double frac_unrepaired, double mean_local_frag, double frac_unrepaired_local, double circular_prob, int pair_type = 0, double prob_correct_repaired = 0, int track_all = 0){
         clone_ID = cID;
         parent_ID = pID;
         name = "";
@@ -593,8 +593,11 @@ public:
 
         // weird numbers when running on Mac
         avg_alter = avg_alter / alters.size();
-        double var_alter = boost::accumulators::variance(ppalters);
-
+        double var_alter = 0;
+        if(alters.size() > 1){
+            boost::accumulators::variance(ppalters);
+        }
+        
         if(verbose > 1){
             cout << "total pairs of glands for computing pairwise divergence " << ntotal << endl;
         }

@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <vector>
 #include <map>
+#include <unordered_map>
 #include <cmath>
 #include <set>
 #include <climits>
@@ -57,10 +58,8 @@ const int FAIL = 1;
 const int NUM_CHR = 22;
 const int NORM_PLOIDY = 2;
 // const int NUM_LOC = 5000;
-// const int BIN_SIZE = 500000; 
+const int BIN_SIZE = 500000;    // used in ploidy computation
 
-// Number of chromsomes affected in a multipolar event
-const int MULTI_NCHR = 16;
 
 vector<int> CHR_LENGTHS;
 vector<int> ARM_BOUNDS;
@@ -258,6 +257,29 @@ int rchoose(gsl_rng* r, const std::vector<double>& rates){
 
   //cout << "u=\t" << u << "\t" << ret << endl;
   return ret;
+}
+
+
+// from https://chat.openai.com/
+template <typename T>
+T get_mode(std::vector<T> vec) {
+    std::unordered_map<T, int> freq_map; // create a map to store the frequency of each element
+
+    for (auto i : vec) {
+        freq_map[i]++; // increment the count of the current element
+    }
+
+    T mode;
+    int max_freq = 0;
+
+    for (auto pair : freq_map) {
+        if (pair.second > max_freq) {
+            max_freq = pair.second;
+            mode = pair.first;
+        }
+    }
+
+    return mode;
 }
 
 

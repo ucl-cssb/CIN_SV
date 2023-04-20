@@ -25,8 +25,9 @@ int main(int argc, char const *argv[]){
     // string target_chrs;
     string fchr_prob;
     string fchr, fbin, fbp;
-    int n_local_frag;  // mean number of breakpoints introduced by local fragmentation during mitosis
+    double n_local_frag;  // mean number of breakpoints introduced by local fragmentation during mitosis
     double frac_unrepaired_local;
+    double prob_wgd;
     int pair_type; // type of joining pair of breakpoints
     double prob_correct_repaired;
     int div_break;   // ID of division when DSBs occurs
@@ -61,13 +62,14 @@ int main(int argc, char const *argv[]){
       // ("n_cycle", po::value<int>(&n_cycle)->default_value(2), "number of cell cycles") // only meaningful when tracking one child
       ("n_cell,n", po::value<int>(&n_cell)->default_value(2), "size of final population")
       ("div_break", po::value<int>(&div_break)->default_value(0), "maximum ID of cell division when double strand breaks occurs")
-      ("dsb_rate,r", po::value<double>(&dsb_rate)->default_value(0), "mean constant rate of double strand breaks per division in gradutual evolution")
-      // ("dsb_rate2,r", po::value<double>(&dsb_rate)->default_value(0), "mean constant rate of double strand breaks per division in gradutual evolution after a punctuated event")
+      ("dsb_rate,r", po::value<double>(&dsb_rate)->default_value(0), "mean number or rate of double strand breaks per cell division assuming gradutual evolution, which follows Poisson distribution")
+      // ("dsb_rate2", po::value<double>(&dsb_rate2)->default_value(0), "mean constant rate of double strand breaks per division in gradutual evolution after a punctuated event")
       // ("min_dsb", po::value<int>(&min_dsb)->default_value(0), "minimal number of double strand breaks (lower bound of uniform distribution of the number of double strand breaks)")
       // ("max_dsb", po::value<int>(&max_dsb)->default_value(40), "maximal number of double strand breaks (upper bound of uniform distribution of the number of double strand breaks)")
       ("n_dsb", po::value<int>(&n_dsb)->default_value(20), "number of double strand breaks introduced in G1 (in catastrophic events, fixed at each cell cycle)")
       ("frac_unrepaired", po::value<double>(&frac_unrepaired)->default_value(0), "fraction of unrepaired double strand breaks in G1, default: all breaks are repaired.")
-      ("n_local_frag", po::value<int>(&n_local_frag)->default_value(0), "mean number of double strand breaks introduced by local fragmentation during mitosis")
+      ("prob_wgd", po::value<double>(&prob_wgd)->default_value(0), "probability of whole genome doubling")
+      ("n_local_frag", po::value<double>(&n_local_frag)->default_value(0), "mean number of double strand breaks introduced by local fragmentation during mitosis")
       ("frac_unrepaired_local", po::value<double>(&frac_unrepaired_local)->default_value(1), "number of unrepaired double strand breaks in local fragmentation during mitosis, default: all breaks are not repaired")
       ("pair_type", po::value<int>(&pair_type)->default_value(0), "type of joining pair of breakpoints, default: randomly joined. 1: joining based on distance between breakpoints")  
       ("prob_correct_repaired", po::value<double>(&prob_correct_repaired)->default_value(0.5), "the probability of correctly repaired double strand breaks in G1")          
@@ -194,13 +196,10 @@ int main(int argc, char const *argv[]){
     // int diff = max_dsb - min_dsb;
     // int rdm = myrng(diff);
     // n_dsb = min_dsb + diff;
-    if(dsb_rate > 0){  // different for each cycle
-      n_dsb = gsl_ran_poisson(r, dsb_rate);
-    }
     
     Model start_model(model_ID, selection_type, selection_strength, growth_type);
     int n_unrepaired = round(n_dsb * frac_unrepaired);
-    Cell_ptr start_cell = new Cell(1, 0, birth_rate, death_rate, dsb_rate, n_dsb, n_unrepaired, 0, div_break, only_repair_new);
+    Cell_ptr start_cell = new Cell(1, 0, birth_rate, death_rate, prob_wgd, dsb_rate, n_dsb, n_unrepaired, 0, div_break, only_repair_new);
     Clone* s = new Clone(1, 0, n_cell, bps, bp_fracs, frac_unrepaired, n_local_frag, frac_unrepaired_local, circular_prob, pair_type, prob_correct_repaired, track_all);
     
     if(verbose > 0){
@@ -261,7 +260,6 @@ int main(int argc, char const *argv[]){
     vector<int> ids;
     int num_loc = bins.size();
 
-
     for(auto cell : final_cells){
       // verbose = 1;
       if(verbose > 0){
@@ -272,6 +270,7 @@ int main(int argc, char const *argv[]){
       cell->g->calculate_segment_cn(bps_by_chr, verbose);
 
       if(bin_level_sumstat || write_bin){
+        assert(fbin != "" && bins.size() > 0);
         cell->g->get_cn_bin(bins, bin_number, verbose);
       }
 
@@ -298,7 +297,7 @@ int main(int argc, char const *argv[]){
         string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
         string fname_stat = outdir +"/" + "sumStats_total_c" + midfix + filetype;
         string fname_stat_chr = outdir +"/" + "sumStats_chrom_c" + midfix + filetype;
-        cell->write_summary_stats(fname_stat, fname_stat_chr);
+        cell->write_summary_stats(fname_stat, fname_stat_chr, bin_level_sumstat, verbose);
       }
 
       // write CN and SV data to tsv - for ShatterSeek
@@ -375,6 +374,7 @@ int main(int argc, char const *argv[]){
       int nbp = accumulate(std::begin(bp_freq), std::end(bp_freq), 0,
                                           [](const int previous, const std::pair<const int, int>& p)
                                           { return previous + p.second; });
+      assert(bp_freq.size() == n_cell);
       for(auto bpq: bp_freq){
         // cout << "\t" << bpq.first << "\t" << bpq.second << endl;       
         // normalize count by the total number of counts to get similar scalce to PGA and DIV
