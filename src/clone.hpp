@@ -344,11 +344,15 @@ public:
             cout << "update birth-death rate for cell "<< dcell->cell_ID << " with " << dcell->birth_rate << "-" << dcell->death_rate << endl;
         }
 
+        if(dcell->birth_rate == 0 && dcell->death_rate == 0){
+            dcell->surv_prob = 0;
+            return;
+        }
         map<int, set<int>> bps_by_chr;
         dcell->g->get_bps_per_chr(bps_by_chr, verbose);
         dcell->g->calculate_segment_cn(bps_by_chr, verbose);
-
         dcell->get_surv_prob(model.selection_type, model.selection_strength, verbose);
+
         // the value may be 0
         if(dcell->surv_prob == 0){
             dcell->fitness = -0.999999;

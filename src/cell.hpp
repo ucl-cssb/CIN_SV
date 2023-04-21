@@ -1150,11 +1150,11 @@ public:
         if(u2 < 0.5){
           duplicate_genome(dcell1);
           dcell2->birth_rate = 0;
-          dcell2->death_rate = 1;
+          dcell2->death_rate = 0;
         }else{
           duplicate_genome(dcell2);
           dcell1->birth_rate = 0;
-          dcell1->death_rate = 1;          
+          dcell1->death_rate = 0;          
         }
         
         if(verbose > 1){
