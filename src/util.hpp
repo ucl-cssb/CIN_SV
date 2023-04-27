@@ -59,7 +59,7 @@ const int NUM_CHR = 22;
 const int NORM_PLOIDY = 2;
 // const int NUM_LOC = 5000;
 const int BIN_SIZE = 500000;    // used in ploidy computation
-
+const int MAX_NUM_WGD = 1; 
 
 vector<int> CHR_LENGTHS;
 vector<int> ARM_BOUNDS;

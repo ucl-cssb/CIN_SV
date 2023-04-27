@@ -137,7 +137,7 @@ public:
     int n_circle;
     int n_ecdna;  // circular chromosomes without centromeres
     int n_nocentro;  // linear chromosomes without centromeres
-    double ploidy;  // mean copy number
+    int ploidy;  
 
     // count events by chromosome
     map<int, set<vector<int>>> chr_bp_unique;  // use position to be consistent with real data
@@ -168,6 +168,8 @@ public:
 
         birth_rate = log(2);
         death_rate = 0;
+
+        ploidy = NORM_PLOIDY;
 
         prob_wgd = 0.0;
         dsb_rate = 0.0;
@@ -220,6 +222,8 @@ public:
         this->birth_rate = birth_rate;
         this->death_rate = death_rate;
 
+        this->ploidy = NORM_PLOIDY;
+
         this->prob_wgd = prob_wgd;
         this->dsb_rate = dsb_rate;        
         this->n_dsb  = n_dsb;
@@ -260,6 +264,8 @@ public:
 
         this->birth_rate = ncell.birth_rate;
         this->death_rate = ncell.death_rate;
+
+        this->ploidy = ncell.ploidy;
 
         this->prob_wgd = ncell.prob_wgd;
         this->dsb_rate = ncell.dsb_rate;
@@ -1142,17 +1148,19 @@ public:
       }
 
       double u = runiform(r, 0, 1);
-      if(u < prob_wgd){
+      if(u < prob_wgd && ploidy <= MAX_NUM_WGD * NORM_PLOIDY){
         if(verbose > 0){
           cout << "WGD of cell " << cell_ID  << " with sampled probability " << u <<endl;
         }        
         double u2 = runiform(r, 0, 1);
         if(u2 < 0.5){
           duplicate_genome(dcell1);
+          dcell1->ploidy = 2 * ploidy;
           dcell2->birth_rate = 0;
-          dcell2->death_rate = 0;
+          dcell2->death_rate = 0;         
         }else{
           duplicate_genome(dcell2);
+          dcell2->ploidy = 2 * ploidy;
           dcell1->birth_rate = 0;
           dcell1->death_rate = 0;          
         }
@@ -1225,11 +1233,11 @@ public:
     }
 
 
-    // taking the most common copy number state
-    void get_ploidy(int bin_level_sumstat, int verbose = 0){
+    // taking the most common copy number state, need to compute CNs for each bin or segment, slow for many simulations
+    // many be needed when there are lots of DSBs leading to many complex paths and unbalanced distribution
+    void set_ploidy_by_CN(int bin_level_sumstat, int verbose = 0){
       if(verbose > 1) cout << "compute ploidy\n";
       vector<int> tcns;
-
 
       if(bin_level_sumstat){
         for(int i = 0; i < g->bin_tcn.size(); i++){
@@ -1250,7 +1258,6 @@ public:
           }
         }
       }
-
 
       // double sum_cn = accumulate(tcns.begin(), tcns.end(), 0.0);
       // ploidy = sum_cn / tcns.size();
@@ -1566,7 +1573,7 @@ public:
       }
     }
 
-    // print summary information for each cell whose values are used for inference
+    // print summary information for each cell whose values are used for inference of chromothripsis
     void print_total_summary(vector<pos_cn>& dups, vector<pos_cn> dels, int verbose = 0){
       // set<string> pos_del_by_adj;
       // set<string> pos_dup_by_adj;
@@ -1604,16 +1611,17 @@ public:
         // }
       }
  
-
+      // was used to infer parameters in chromothripsis by picking specific cell and chromosome
       // int nSV = n_dup + n_del + n_h2h + n_t2t;
       cout << div_occur << "\t" << cell_ID;
       //  << "\t" << 0 << "\t" << bp_unique.size() << "\t" << nSV << endl;
       for(int i = 0; i < NUM_CHR; i++){
-        int nSV_chr = chr_type_num[i][DEL] + chr_type_num[i][DUP] + chr_type_num[i][H2HINV] + chr_type_num[i][T2TINV];
+        // int nSV_chr = chr_type_num[i][DEL] + chr_type_num[i][DUP] + chr_type_num[i][H2HINV] + chr_type_num[i][T2TINV];
         // cout << div_occur << "\t" << cell_ID << "\t" << i+1 << "\t" << chr_n_bp[i] << "\t" << nSV_chr << endl;
-        cout << "\t" << chr_bp_unique[i].size() << "\t" << chr_n_osc2[i] << "\t" << chr_n_osc3[i]  << "\t" << nSV_chr;
+        cout << "\t" << chr_bp_unique[i].size() << "\t" << chr_n_osc2[i] << "\t" << chr_n_osc3[i] << "\t" << chr_type_num[i][DEL] << "\t" << chr_type_num[i][DUP] << "\t" << chr_type_num[i][H2HINV] << "\t" << chr_type_num[i][T2TINV] << "\t" << chr_type_num[i][BND];
       }
-      cout << endl;      
+      // cout << endl; 
+      cout << "\t";     
     }
 
 
@@ -1827,20 +1835,20 @@ public:
       fout << "cycleID\tcellID\tnDSB\tnUnrepair\tnDBS_unique\tnBP_unique\tnBP\tnDel\tnDup\tnH2HInv\tnT2TInv\tnTra\tnCircle\tnECDNA\tnNoCentromere\tploidy\n";
       // writing summary statistics for each chromosome
       ofstream fout_chr(fname_chr);
-      fout_chr << "cycleID\tcellID\tchr\tnBP\tnDel\tnDup\tnH2HInv\tnT2TInv\tnTra\n";
+      fout_chr << "cycleID\tcellID\tchr\tnBP\tnOSC2\tnOSC3\tnDel\tnDup\tnH2HInv\tnT2TInv\tnTra\n";
 
       // for(auto dbs : dbs_unique){
       //   cout << dbs[0] << "\t" << dbs[1] << "\t" << dbs[2] << "\n";
       // }
 
-      get_ploidy(bin_level_sumstat, verbose);
+
 
       fout << to_string(div_occur) + "\t" + to_string(cell_ID) + "\t" + to_string(n_dsb) + "\t" + to_string(n_unrepaired)  + "\t" + to_string(dbs_unique.size()) + "\t" + to_string(bp_unique.size()) + "\t" + to_string(n_bp) + "\t" + to_string(n_del) + "\t" + to_string(n_dup) + "\t" + to_string(n_h2h) + "\t" + to_string(n_t2t)  + "\t" + to_string(n_tra) + "\t" + to_string(n_circle) + "\t" + to_string(n_ecdna) + "\t" + to_string(n_nocentro) + "\t" + to_string(ploidy) + "\n";
 
       fout.close();
 
       for(int i = 0; i < NUM_CHR; i++){
-        fout_chr << to_string(div_occur) + "\t" + to_string(cell_ID) + "\t" + to_string(i + 1) + "\t" << chr_bp_unique[i].size() << "\t" << chr_type_num[i][DEL] << "\t" << chr_type_num[i][DUP] << "\t" << chr_type_num[i][H2HINV] << "\t" << chr_type_num[i][T2TINV] << "\t" << chr_type_num[i][BND] << "\n";
+        fout_chr << to_string(div_occur) + "\t" + to_string(cell_ID) + "\t" + to_string(i + 1) + "\t" << chr_bp_unique[i].size() << "\t" << chr_n_osc2[i] << "\t" << chr_n_osc3[i] << "\t" << chr_type_num[i][DEL] << "\t" << chr_type_num[i][DUP] << "\t" << chr_type_num[i][H2HINV] << "\t" << chr_type_num[i][T2TINV] << "\t" << chr_type_num[i][BND] << "\n";
       }
       fout_chr.close();
     }
@@ -1894,7 +1902,8 @@ public:
 
 
     // SVtype (character): type of SV, encoded as: DEL (deletion-like; +/-), DUP (duplication-like; -/+), h2hINV (head-to-head inversion; +/+), and t2tINV (tail-to-tail inversion; -/-).
-    void write_shatterseek(string fname_cn, string fname_sv, const vector<pos_cn>& dups, const vector<pos_cn>& dels, int verbose = 0){
+    // , const vector<pos_cn>& dups, const vector<pos_cn>& dels
+    void write_shatterseek(string fname_cn, string fname_sv, int verbose = 0){
       // "chromosome", "start", "end", "total_cn"
       ofstream fout_cn(fname_cn);
       string header = "chromosome\tstart\tend\ttotal_cn\tcnA\tcnB\n";
@@ -1921,17 +1930,17 @@ public:
         fout << line;
       }
 
-      for(auto d: dups){
-          string extra = "DUPREAL";
-          string line = to_string(d.chr + 1) + "\t" + to_string(d.start) + "\t" + "-" + "\t" + to_string(d.chr + 1) + "\t" + to_string(d.end) + "\t" + "+" + "\t" + extra + "\n";
-          fout << line;       
-      }
+      // for(auto d: dups){
+      //     string extra = "DUPREAL";
+      //     string line = to_string(d.chr + 1) + "\t" + to_string(d.start) + "\t" + "-" + "\t" + to_string(d.chr + 1) + "\t" + to_string(d.end) + "\t" + "+" + "\t" + extra + "\n";
+      //     fout << line;       
+      // }
 
-      for(auto d: dels){
-          string extra = "DELREAL";
-          string line = to_string(d.chr + 1) + "\t" + to_string(d.start) + "\t" + "+" + "\t" + to_string(d.chr + 1) + "\t" + to_string(d.end) + "\t" + "-" + "\t" + extra + "\n";
-          fout << line;       
-      }
+      // for(auto d: dels){
+      //     string extra = "DELREAL";
+      //     string line = to_string(d.chr + 1) + "\t" + to_string(d.start) + "\t" + "+" + "\t" + to_string(d.chr + 1) + "\t" + to_string(d.end) + "\t" + "-" + "\t" + extra + "\n";
+      //     fout << line;       
+      // }
 
       fout.close();
 

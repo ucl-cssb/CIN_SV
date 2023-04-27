@@ -345,7 +345,7 @@ public:
         }
 
         if(dcell->birth_rate == 0 && dcell->death_rate == 0){
-            dcell->surv_prob = 0;
+            dcell->surv_prob = -1;
             return;
         }
         map<int, set<int>> bps_by_chr;
@@ -415,14 +415,12 @@ public:
          if(restart == 1) initialize_with_dsb(ncell, model, track_all);
 
          double t = 0;  // starting time, relative to the time of last end
-         int nu = 0; // The number of new mutations, relative to the time of last end
 
          if(verbose > 0) cout << "\nSimulating tumour growth with CNAs under model " << model.model_ID << " at time " << ncell->time_occur + t << endl;
 
          while(this->curr_cells.size() < n_cell){
              if(this->curr_cells.size() == 0){
                  t = 0;
-                 nu = 0;
                  initialize_with_dsb(ncell, model, track_all);
                  continue;
              }
@@ -479,12 +477,20 @@ public:
                      this->curr_cells[rindex] = NULL;
                  }
                  this->curr_cells.erase(this->curr_cells.begin() + rindex);
-                 this->curr_cells.push_back(dcell1);
-                 this->curr_cells.push_back(dcell2);
 
-                 if(track_all){
-                  this->cells.push_back(dcell1);
-                  this->cells.push_back(dcell2);
+                 if(dcell1->surv_prob == -1 || dcell1->g->paths.size() == 0){
+                    if(verbose > 1) cout << "delete cell " << dcell1->cell_ID << " with survival probability " << dcell1->surv_prob << " and " << dcell1->g->paths.size() << " paths " << endl;
+                    delete dcell1;
+                 }else{                   
+                    this->curr_cells.push_back(dcell1);
+                    if(track_all) this->cells.push_back(dcell1);   // to avoid issues in deleting pointers
+                 }
+                 if(dcell2->surv_prob == -1 || dcell2->g->paths.size() == 0){
+                    if(verbose > 1) cout << "delete cell " << dcell2->cell_ID << " with survival probability " << dcell2->surv_prob << " and " << dcell2->g->paths.size() << " paths " << endl;                    
+                    delete dcell2;                   
+                 }else{
+                    this->curr_cells.push_back(dcell2);
+                    if(track_all) this->cells.push_back(dcell2);
                  }
              }else if(rb >= rbrate && rb < rbrate + rdrate){
                  // cout << " death event" << endl;
@@ -502,7 +508,6 @@ public:
          }
 
          this->time_end += t;
-         // this->n_novel_dsb  += nu;
      }
 
 
@@ -511,21 +516,21 @@ public:
 
     /*********************** functions related to output **************************/
 
-    // treat single cell data as pseudo-bulk data and compute average ploidy 
     // loc_cn stores the absolute copy numbers for each cell
     // frac_genome_alt = length(which(x!=y)) / length(x)
     // assume there is no WGD, not a natural product of current simulation
-    double get_pga(const map<int, vector<double>>& loc_cn, int num_loc, int is_haplotype = 0){
+    double get_pga(const map<int, vector<double>>& loc_cn, int num_loc, map<int, double>& cell_ploidy, int is_haplotype = 0){
         int nsample = loc_cn.size();
         // cout << "There are " << nsample << " samples" << endl;
         vector<int> alter_indicator_sep(num_loc, 0);
         double avg_nalter_sep = 0;
-        int baseline = NORM_PLOIDY;
-        if(is_haplotype){
-            baseline = NORM_PLOIDY / 2;
-        }
 
         for(auto s : loc_cn){
+            double ploidy = cell_ploidy[s.first];
+            int baseline = round(ploidy);
+            if(is_haplotype){
+                baseline = baseline / 2;
+            }
             for(int i = 0; i < num_loc; i++){
                 if(round(s.second[i]) != baseline){
                     alter_indicator_sep[i] += 1;
@@ -548,26 +553,31 @@ public:
     // Specifically, this was the proportion of altered bins (copy number not equal to ploidy in either or both samples) that had different copy number in each sample.
     // ids: The ID of each clone (cell), sorted
     // loc_cn: the absolute copy numbers of each location (bin) along the genome
-    pair<double, double> get_pairwise_divergence(const vector<int>& ids, map<int, vector<double>>& loc_cn, int num_loc, int is_haplotype = 0, int use_alter = 1, int verbose = 0){
+    pair<double, double> get_pairwise_divergence(vector<int>& ids, map<int, vector<double>>& loc_cn, int num_loc, map<int, double>& cell_ploidy, int is_haplotype = 0, int use_alter = 1, int verbose = 0){
         int ntotal = 0;
         vector<double> alters;
         double avg_alter = 0.0;
         VARIANCE ppalters;
-        int baseline = NORM_PLOIDY;
-        if(is_haplotype){
-            baseline = NORM_PLOIDY / 2;
-        }
 
         for(int i = 0; i < ids.size(); i++){
             vector<double> lchanges1 = loc_cn[ids[i]];
+            double ploidy1 = cell_ploidy[ids[i]];
+            int baseline1 = round(ploidy1);
+            if(is_haplotype){
+                baseline1 = baseline1 / 2;
+            }            
             for(int j = i + 1; j < ids.size(); j++){
                 ntotal++;
                 vector<double> lchanges2 = loc_cn[ids[j]];
-
+                double ploidy2 = cell_ploidy[ids[j]];
+                int baseline2 = round(ploidy2);
+                if(is_haplotype){
+                    baseline2 = baseline2 / 2;
+                } 
                 int num_alter = 0;
                 int num_diff = 0;
                 for(int k = 0; k < num_loc; k++){
-                    if(round(lchanges1[k]) != baseline || round(lchanges2[k]) != baseline){
+                    if(round(lchanges1[k]) != baseline1 || round(lchanges2[k]) != baseline2){
                         num_alter++;
                         if(round(lchanges2[k]) != round(lchanges1[k])){
                             num_diff++;

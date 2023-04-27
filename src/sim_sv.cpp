@@ -13,6 +13,106 @@ using namespace std;
 
 // Simulate structural variations during cell division
 
+void get_bin_number(string fbin, vector<pos_bin>& bins, vector<int>& bin_number, int verbose = 0){
+    read_bins(fbin, bins, verbose);
+
+    vector<int> bin_count(NUM_CHR, 0);
+    if(verbose) cout << "There are " << bins.size() << " bins" << endl;
+    for(auto bin : bins){
+      // cout << bin.chr << " " << bin.start << " " << bin.end << endl;
+      if(bin.chr > NUM_CHR) break;
+      assert(bin.chr >= 1);
+      bin_count[bin.chr - 1]++;    // real data starts from chr 1
+    }
+
+    // bin_number[0] = bin_count[0] when calling library function
+    // std::partial_sum(bin_count.begin(), bin_count.end(), bin_number.begin());
+    for(int i = 0; i < NUM_CHR - 1; i++){
+      bin_number[i + 1] = bin_number[i] + bin_count[i];
+    }
+
+    if(verbose){
+      cout << "number of bins for each chromosome" << endl;
+      for(int i = 0; i < bin_count.size(); i++) {
+        cout << i + 1 << "\t" << bin_count[i] << "\t" << bin_number[i] << endl;
+      }        
+    }   
+}
+
+
+void write_rck_output(vector<Cell_ptr>& final_cells, string outdir, int verbose = 0){
+    for(auto cell : final_cells){
+      map<int, set<int>> bps_by_chr;
+      cell->g->get_bps_per_chr_orig(bps_by_chr, verbose);
+
+      cell->g->calculate_segment_cn(bps_by_chr , verbose);
+
+      //  and circos plot
+      if(verbose > 0) cout << "\nWrite output for RCK graph" << endl;
+      string subdir = outdir + "/" +  "c" + to_string(cell->cell_ID);
+      boost::filesystem::path dir(subdir);
+      boost::filesystem::create_directory(dir);
+      string fname_cn = subdir + "/" + "rck.scnt.tsv";      
+      string fname_sv = subdir + "/" + "rck.acnt.tsv";
+      cell->write_rck(fname_cn, fname_sv, verbose);
+
+      // same format as 
+      if(verbose > 0) cout << "\nWrite output for chromosome graph plot" << endl;
+      fname_cn = subdir + "/" + "copy_number.CN_opt.phased";      
+      fname_sv = subdir + "/" + "SVs.CN_opt.phased";
+      cell->write_plot(fname_cn, fname_sv, verbose);
+    }  
+}
+
+
+void write_stat_bin_cn(Clone* s, vector<Cell_ptr>& final_cells, int num_loc, int verbose = 0){
+    map<int, double> cell_ploidy;
+    map<int, vector<double>> loc_cn;
+    map<int, vector<double>> loc_cnA;
+    map<int, vector<double>> loc_cnB;
+    vector<int> ids;
+
+    for(auto cell : final_cells){
+        cell_ploidy[cell->cell_ID] = cell->ploidy;
+        loc_cn[cell->cell_ID] = cell->g->bin_tcn;
+        loc_cnA[cell->cell_ID] = cell->g->bin_cnA;
+        loc_cnB[cell->cell_ID] = cell->g->bin_cnB;
+        ids.push_back(cell->cell_ID);
+    }
+    if(verbose > 0) cout << "summary statistics for " << num_loc << " bins" << endl;
+
+    double pga = s->get_pga(loc_cn, num_loc, cell_ploidy);
+    double pgaA = s->get_pga(loc_cnA, num_loc, cell_ploidy, 1);
+    double pgaB = s->get_pga(loc_cnB, num_loc, cell_ploidy, 1);
+    pair<double, double> div = s->get_pairwise_divergence(ids, loc_cn, num_loc, cell_ploidy);
+    pair<double, double> divA = s->get_pairwise_divergence(ids, loc_cnA, num_loc, cell_ploidy, 1);
+    pair<double, double> divB = s->get_pairwise_divergence(ids, loc_cnB, num_loc, cell_ploidy, 1);
+    cout << pga << "\t" << div.first << "\t" << div.second << "\t" << pgaA << "\t" << divA.first << "\t" << divA.second << "\t" << pgaB << "\t" << divB.first << "\t" << divB.second;
+}
+
+
+void write_stat_bp_freq(Clone* s, vector<Cell_ptr>& final_cells, int verbose = 0){
+    // get number of new breakpoints locations of all current cells
+    map<int, int> bp_freq;  // bp count: 1 to ncell, bp frequency
+    s->get_bp_freq(final_cells, bp_freq);
+    // based on https://stackoverflow.com/questions/9370945/finding-the-max-value-in-a-map
+    // auto pr = std::max_element(std::begin(bp_freq), std::end(bp_freq), [](const pair<int, int>& p1, const pair<int, int>& p2){ return p1.second < p2.second;});
+    int nbp = accumulate(std::begin(bp_freq), std::end(bp_freq), 0,
+                                        [](const int previous, const std::pair<const int, int>& p)
+                                        { return previous + p.second; });
+    assert(bp_freq.size() == final_cells.size());
+    for(auto bpq: bp_freq){
+      if(verbose > 1) cout << "\t" << bpq.first << "\t" << bpq.second << endl;       
+      // normalize count by the total number of counts to get similar scalce to PGA and DIV
+      double freq = 0;
+      if(nbp > 0){
+        freq = (double) bpq.second / nbp;
+      }
+      cout << "\t" << freq;
+    }  
+}
+
+
 int main(int argc, char const *argv[]){
     // int n_cycle;
     int n_cell;
@@ -159,29 +259,7 @@ int main(int argc, char const *argv[]){
     vector<pos_bin> bins;
     vector<int> bin_number(NUM_CHR, 0);  // store the cumulative number of bins for each chromosome   
     if(fbin != ""){
-      read_bins(fbin, bins, verbose);
-
-      vector<int> bin_count(NUM_CHR, 0);
-      if(verbose) cout << "There are " << bins.size() << " bins" << endl;
-      for(auto bin : bins){
-        // cout << bin.chr << " " << bin.start << " " << bin.end << endl;
-        if(bin.chr > NUM_CHR) break;
-        assert(bin.chr >= 1);
-        bin_count[bin.chr - 1]++;    // real data starts from chr 1
-      }
-
-      // bin_number[0] = bin_count[0] when calling library function
-      // std::partial_sum(bin_count.begin(), bin_count.end(), bin_number.begin());
-      for(int i = 0; i < NUM_CHR - 1; i++){
-        bin_number[i + 1] = bin_number[i] + bin_count[i];
-      }
-
-      if(verbose){
-        cout << "number of bins for each chromosome" << endl;
-        for(int i = 0; i < bin_count.size(); i++) {
-          cout << i + 1 << "\t" << bin_count[i] << "\t" << bin_number[i] << endl;
-        }        
-      } 
+      get_bin_number(fbin, bins, bin_number, verbose);
     }
 
     vector<pos_bp> bps;
@@ -218,7 +296,7 @@ int main(int argc, char const *argv[]){
     // }
 
     if(verbose > 0) cout << "\nComputing breakpoints on each chromosome across all cells for more intuitive comparison and visualization" << endl;
-    // get breakpoints across cells first
+    // get breakpoints across cells first to align breakpoints for better visualization
     map<int, set<int>> bps_by_chr;
     for(auto cell : final_cells){
       if(verbose > 0){
@@ -254,11 +332,7 @@ int main(int argc, char const *argv[]){
     }
 
     if(verbose > 0) cout << "\nComputing CN for each cell " << endl;
-    map<int, vector<double>> loc_cn;
-    map<int, vector<double>> loc_cnA;
-    map<int, vector<double>> loc_cnB;
-    vector<int> ids;
-    int num_loc = bins.size();
+
 
     for(auto cell : final_cells){
       // verbose = 1;
@@ -274,22 +348,9 @@ int main(int argc, char const *argv[]){
         cell->g->get_cn_bin(bins, bin_number, verbose);
       }
 
-      vector<pos_cn> dups;
-      vector<pos_cn> dels;
-      // seems not necessary as the breakpoints can be telled from copy number segments
-      // cell->g->get_pseudo_adjacency(dups, dels, verbose);
       // compute and print summary statistics, used for ABC
       cell->get_summary_stats(verbose);
 
-      if(!bin_level_sumstat){
-        cell->print_total_summary(dups, dels, verbose);
-      }else{
-        loc_cn[cell->cell_ID] = cell->g->bin_tcn;
-        loc_cnA[cell->cell_ID] = cell->g->bin_cnA;
-        loc_cnB[cell->cell_ID] = cell->g->bin_cnB;
-        ids.push_back(cell->cell_ID);
-      }
-      
       // write summary statistics for each cell
       if(write_sumstats){
         if(verbose > 0) cout << "\nWrite output for summary statistics" << endl;
@@ -306,7 +367,7 @@ int main(int argc, char const *argv[]){
         string midfix = to_string(cell->cell_ID) + "_div" + to_string(cell->div_occur) + suffix;
         string fname_sv_ss = outdir + "/" + "SVData_c" + midfix + filetype;
         string fname_cn_ss = outdir + "/" + "CNData_c" + midfix + filetype;
-        cell->write_shatterseek(fname_cn_ss, fname_sv_ss, dups, dels, verbose);
+        cell->write_shatterseek(fname_cn_ss, fname_sv_ss, verbose);
       }
 
       if(write_genome){
@@ -327,27 +388,7 @@ int main(int argc, char const *argv[]){
     // at the end to avoid conflict with merged copy numbers
     if(write_rck){
       if(verbose > 0) cout << "\nWrite output in RCK format" << endl;
-      for(auto cell : final_cells){
-        map<int, set<int>> bps_by_chr;
-        cell->g->get_bps_per_chr_orig(bps_by_chr, verbose);
-
-        cell->g->calculate_segment_cn(bps_by_chr, verbose);
-
-        //  and circos plot
-        if(verbose > 0) cout << "\nWrite output for RCK graph" << endl;
-        string subdir = outdir + "/" +  "c" + to_string(cell->cell_ID);
-        boost::filesystem::path dir(subdir);
-        boost::filesystem::create_directory(dir);
-        string fname_cn = subdir + "/" + "rck.scnt.tsv";      
-        string fname_sv = subdir + "/" + "rck.acnt.tsv";
-        cell->write_rck(fname_cn, fname_sv, verbose);
-
-        // same format as 
-        if(verbose > 0) cout << "\nWrite output for chromosome graph plot" << endl;
-        fname_cn = subdir + "/" + "copy_number.CN_opt.phased";      
-        fname_sv = subdir + "/" + "SVs.CN_opt.phased";
-        cell->write_plot(fname_cn, fname_sv, verbose);
-      }
+      write_rck_output(final_cells, outdir, verbose);
     }
 
     if(track_all){
@@ -357,35 +398,20 @@ int main(int argc, char const *argv[]){
       // fout_lineage.close();
     }
 
-    if(bin_level_sumstat){
-      if(verbose > 0) cout << "summary statistics for " << num_loc << " bins" << endl;
-      double pga = s->get_pga(loc_cn, num_loc);
-      double pgaA = s->get_pga(loc_cnA, num_loc, 1);
-      double pgaB = s->get_pga(loc_cnB, num_loc, 1);
-      pair<double, double> div = s->get_pairwise_divergence(ids, loc_cn, num_loc);
-      pair<double, double> divA = s->get_pairwise_divergence(ids, loc_cnA, num_loc, 1);
-      pair<double, double> divB = s->get_pairwise_divergence(ids, loc_cnB, num_loc, 1);
-      cout << pga << "\t" << div.first << "\t" << div.second << "\t" << pgaA << "\t" << divA.first << "\t" << divA.second << "\t" << pgaB << "\t" << divB.first << "\t" << divB.second;
-      // get number of new breakpoints locations of all current cells
-      map<int, int> bp_freq;  // bp count: 1 to ncell, bp frequency
-      s->get_bp_freq(final_cells, bp_freq);
-      // based on https://stackoverflow.com/questions/9370945/finding-the-max-value-in-a-map
-      // auto pr = std::max_element(std::begin(bp_freq), std::end(bp_freq), [](const pair<int, int>& p1, const pair<int, int>& p2){ return p1.second < p2.second;});
-      int nbp = accumulate(std::begin(bp_freq), std::end(bp_freq), 0,
-                                          [](const int previous, const std::pair<const int, int>& p)
-                                          { return previous + p.second; });
-      assert(bp_freq.size() == n_cell);
-      for(auto bpq: bp_freq){
-        // cout << "\t" << bpq.first << "\t" << bpq.second << endl;       
-        // normalize count by the total number of counts to get similar scalce to PGA and DIV
-        double freq = 0;
-        if(nbp > 0){
-          freq = (double) bpq.second / nbp;
-        }
-        cout << "\t" << freq;
-      }
-      cout << endl;
+    // output all the summary statistics in console for ABC 
+    if(bin_level_sumstat){   
+      int num_loc = bins.size();  
+      write_stat_bin_cn(s, final_cells, num_loc, verbose);     
     }
+    write_stat_bp_freq(s, final_cells, verbose);
+    // for(auto cell : final_cells){  
+    //   vector<pos_cn> dups;
+    //   vector<pos_cn> dels;
+    //   // seems not necessary as the breakpoints can be telled from copy number segments
+    //   // cell->g->get_pseudo_adjacency(dups, dels, verbose);        
+    //   cell->print_total_summary(dups, dels, verbose);
+    // }
+    cout << endl;
 
     delete s;
     gsl_rng_free(r);
