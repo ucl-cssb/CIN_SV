@@ -404,14 +404,33 @@ int main(int argc, char const *argv[]){
       write_stat_bin_cn(s, final_cells, num_loc, verbose);     
     }
     write_stat_bp_freq(s, final_cells, verbose);
-    // for(auto cell : final_cells){  
-    //   vector<pos_cn> dups;
-    //   vector<pos_cn> dels;
-    //   // seems not necessary as the breakpoints can be telled from copy number segments
-    //   // cell->g->get_pseudo_adjacency(dups, dels, verbose);        
-    //   cell->print_total_summary(dups, dels, verbose);
-    // }
-    cout << endl;
+    // add percentage of cells with WGD
+    int nwgd = 0;
+    int total_del = 0;
+    int total_dup = 0;
+    // int total_h2h = 0; 
+    // int total_t2t = 0;
+    int total_inv = 0;
+    int total_tra = 0;
+    for(auto cell : final_cells){  
+      // vector<pos_cn> dups;
+      // vector<pos_cn> dels;
+      // seems not necessary as the breakpoints can be telled from copy number segments
+      // cell->g->get_pseudo_adjacency(dups, dels, verbose);        
+      // cell->print_total_summary(dups, dels, verbose);
+      if(cell->ploidy > 2) nwgd++;
+      total_del += cell->n_del;
+      total_dup += cell->n_dup;
+      total_inv += cell->n_h2h + cell->n_t2t;
+      total_tra += cell->n_tra;
+    }
+    int total_sv = total_del + total_dup + total_inv + total_tra;
+    double frac_wgd = (double) nwgd / final_cells.size();
+    double frac_del = (double) total_del / total_sv;
+    double frac_dup = (double) total_dup / total_sv;
+    double frac_inv = (double) total_inv / total_sv;
+    double frac_tra = (double) total_tra / total_sv;
+    cout << "\t" << frac_wgd << "\t" << frac_del << "\t" << frac_dup << "\t"  << frac_inv << "\t"  << frac_tra << endl;
 
     delete s;
     gsl_rng_free(r);
