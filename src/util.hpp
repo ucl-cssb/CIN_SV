@@ -87,7 +87,7 @@ enum Adj_type{INTERVAL, REF, VAR};   // 0: interval, 1: reference, 2: variant
 enum Junc_type{HEAD, TAIL};
 
 
-const int NCOL_BP_FILE = 7;
+// const int NCOL_BP_FILE = 7;  some intput may not have frequency 
 
 const double PROB_INTER = 1e-9;
 const double PROB_SELF = 1e-12;
@@ -497,9 +497,11 @@ vector<pos_bp> get_bp_from_file(const string& filename, vector<double>& bp_fracs
     stringstream ss(line);
     while (ss >> buf) split.push_back(buf);
     
-    assert(split.size() == NCOL_BP_FILE);
-
-    double freq = atoi(split[6].c_str());
+    // assert(split.size() == NCOL_BP_FILE);
+    double freq = 1;
+    if(split.size() > 6){
+      freq = atoi(split[6].c_str());
+    }
 
     int chr = atoi(split[0].c_str());
     int pos = atoi(split[1].c_str());

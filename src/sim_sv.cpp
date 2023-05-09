@@ -117,6 +117,7 @@ int main(int argc, char const *argv[]){
     // int n_cycle;
     int n_cell;
     double dsb_rate, dsb_rate2;
+    // double mean_break;
     // int min_dsb, max_dsb;
     int n_dsb;
     double frac_unrepaired;
@@ -162,6 +163,7 @@ int main(int argc, char const *argv[]){
       // ("n_cycle", po::value<int>(&n_cycle)->default_value(2), "number of cell cycles") // only meaningful when tracking one child
       ("n_cell,n", po::value<int>(&n_cell)->default_value(2), "size of final population")
       ("div_break", po::value<int>(&div_break)->default_value(0), "maximum ID of cell division when double strand breaks occurs")
+      // ("mean_break", po::value<double>(&mean_break)->default_value(-1), "mean value of cell division ID when double strand breaks occurs")
       ("dsb_rate,r", po::value<double>(&dsb_rate)->default_value(0), "mean number or rate of double strand breaks per cell division assuming gradutual evolution, which follows Poisson distribution")
       // ("dsb_rate2", po::value<double>(&dsb_rate2)->default_value(0), "mean constant rate of double strand breaks per division in gradutual evolution after a punctuated event")
       // ("min_dsb", po::value<int>(&min_dsb)->default_value(0), "minimal number of double strand breaks (lower bound of uniform distribution of the number of double strand breaks)")
@@ -277,6 +279,19 @@ int main(int argc, char const *argv[]){
     
     Model start_model(model_ID, selection_type, selection_strength, growth_type);
     int n_unrepaired = round(n_dsb * frac_unrepaired);
+
+    // if(mean_break > 0){
+    //   // div_break = gsl_ran_geometric(r, mean_break); // hard to limit the range 
+    //   int n = n_cell - 2;
+    //   // double p1 = (double) 1 / n;
+    //   // vector<double> probs(n, p1);
+    //   // gsl_ran_discrete_t* disc = gsl_ran_discrete_preproc(n, &probs[0]); // precompute discrete distribution   
+    //   // div_break = gsl_ran_discrete(r, disc);     
+    //   div_break = gsl_rng_uniform_int(r, n);     
+    // }
+    
+    if(verbose > 1) cout << "DSBs stop after " << div_break << " division " << endl;
+
     Cell_ptr start_cell = new Cell(1, 0, birth_rate, death_rate, prob_wgd, dsb_rate, n_dsb, n_unrepaired, 0, div_break, only_repair_new);
     Clone* s = new Clone(1, 0, n_cell, bps, bp_fracs, frac_unrepaired, n_local_frag, frac_unrepaired_local, circular_prob, pair_type, prob_correct_repaired, track_all);
     

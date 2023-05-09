@@ -1,7 +1,9 @@
 # Introduction
 This program simulates cell divisions with a stochastic birth-death branching process.
 It generates double strand breaks and repair them in each cell cycle.
-It can output copy number alterations and structural variants (SVs) for all cells in the final population.
+It can output copy number alterations (CNAs) and structural variants (SVs) for all cells in the final population.
+
+The program has been tested on *nix systems.
 
 # Installation
 ## Required library
@@ -9,7 +11,8 @@ It can output copy number alterations and structural variants (SVs) for all cell
 * [boost](https://www.boost.org)
 
 ## Compilation
-Download the source code and then run `make` in folder "src" to generate the simulation program 'simsv'.
+Download the source code and then run `make` in folder "src" to generate the simulation program 'simsv' in a few seconds.
+
 
 
 # Usage
@@ -30,7 +33,9 @@ The results can be visualized by script/visualize_sv.R.
 
 
 ## Output files
-sumStats_ : files including summary statistics for each cell and the whole simulation 
+sumStats_sim* : files including summary statistics for the whole simulation 
+sumStats_total_c* : files including summary statistics for each cell 
+sumStats_chrom_c* : files including summary statistics for each chromosome in each cell 
 CNData_*: files including copy numbers for each cell, format compatible with [ShatterSeek](https://github.com/parklab/ShatterSeek)
 SVData_*: files including SVs for each cell, format compatible with [ShatterSeek](https://github.com/parklab/ShatterSeek)
 c*/rck.acnt.tsv: files including copy numbers for each cell, format compatible with [RCK](https://github.com/aganezov/rck)
