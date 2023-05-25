@@ -125,7 +125,7 @@ int main(int argc, char const *argv[]){
     int chr_prob;
     // string target_chrs;
     string fchr_prob;
-    string fchr, fbin, fbp;
+    string fchr, fbin, fbp, fbp_common;
     double n_local_frag;  // mean number of breakpoints introduced by local fragmentation during mitosis
     double frac_unrepaired_local;
     double prob_wgd;
@@ -192,7 +192,8 @@ int main(int argc, char const *argv[]){
       // input files which specifies #sampled cells and CNA informaton
       ("fchr", po::value<string>(&fchr)->default_value(""), "TSV file with chromosome size infomation")
       ("fbin", po::value<string>(&fbin)->default_value(""), "TSV file with bin size infomation")
-      ("fbp", po::value<string>(&fbp)->default_value(""), "TSV file with breakpoint infomation")
+      ("fbp", po::value<string>(&fbp)->default_value(""), "TSV file with breakpoints to sample from when introducing new DSBs")
+      ("fbp_common", po::value<string>(&fbp_common)->default_value(""), "TSV file with initial breakpoints")
 
       // options related to model of evolution
       ("model", po::value<int>(&model_ID)->default_value(0), "model of evolution. 0: neutral; 1: selection")
@@ -247,6 +248,7 @@ int main(int argc, char const *argv[]){
     //   << BOOST_VERSION % 100                // patch level
     //   << std::endl;
 
+    // for genome size, telomere and centromere positions
     read_genome_info(fchr, CHR_LENGTHS, ARM_BOUNDS, CENT_STARTS, CENT_ENDS, TELO_ENDS1, TELO_ENDS2, verbose);
 
     vector<int> selected_chr;
@@ -272,7 +274,7 @@ int main(int argc, char const *argv[]){
       // n_dsb = bps.size() / 2;
       if(verbose > 1) cout << "There are " << bps.size() << " known breakpoints " << endl; 
     }
-      
+
     // int diff = max_dsb - min_dsb;
     // int rdm = myrng(diff);
     // n_dsb = min_dsb + diff;
@@ -293,6 +295,14 @@ int main(int argc, char const *argv[]){
     if(verbose > 1) cout << "DSBs stop after " << div_break << " division " << endl;
 
     Cell_ptr start_cell = new Cell(1, 0, birth_rate, death_rate, prob_wgd, dsb_rate, n_dsb, n_unrepaired, 0, div_break, only_repair_new);
+    // initialize the cell with known CNAs and SVs
+    vector<pos_sv> svs_common;
+    if(fbp_common != ""){
+      svs_common = get_common_sv_from_file(fbp_common, verbose);
+      // if(verbose > 1) cout << "There are " << svs_common.size() << " known breakpoints " << endl;   
+      start_cell->g->intialize_with_svs(svs_common, verbose);   
+    }
+  
     Clone* s = new Clone(1, 0, n_cell, bps, bp_fracs, frac_unrepaired, n_local_frag, frac_unrepaired_local, circular_prob, pair_type, prob_correct_repaired, track_all);
     
     if(verbose > 0){
@@ -305,6 +315,10 @@ int main(int argc, char const *argv[]){
     vector<Cell_ptr> final_cells;
     final_cells = s->curr_cells;
     assert(final_cells.size() == n_cell);
+    if(n_cell == 1){
+      if(verbose > 0) cout << "\nGetting the derivative genome for the single cell" << endl;
+      final_cells[0]->g->get_derivative_genome(circular_prob, verbose);
+    }   
     // if(track_all){
     //   cout << "Tracking all cells" << endl;
     //   final_cells = s->cells;

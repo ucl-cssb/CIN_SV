@@ -557,6 +557,7 @@ public:
         int ntotal = 0;
         vector<double> alters;
         double avg_alter = 0.0;
+        double var_alter = 0.0;       
         VARIANCE ppalters;
 
         for(int i = 0; i < ids.size(); i++){
@@ -606,10 +607,12 @@ public:
         // cout << alters.size() << endl;
 
         // weird numbers when running on Mac
-        avg_alter = avg_alter / alters.size();
-        double var_alter = 0;
+        if(alters.size() > 0){
+            avg_alter = avg_alter / alters.size();
+        }
+        
         if(alters.size() > 1){
-            boost::accumulators::variance(ppalters);
+            var_alter = boost::accumulators::variance(ppalters);
         }
         
         if(verbose > 1){

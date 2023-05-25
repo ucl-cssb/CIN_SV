@@ -53,6 +53,17 @@ struct pos_bp{
 };
 
 
+
+struct pos_sv{
+  int chr1;
+  int loc1;
+  int side1; 
+  int chr2;
+  int loc2;
+  int side2;    
+};
+
+
 const int FAIL = 1;
 
 const int NUM_CHR = 22;
@@ -84,10 +95,10 @@ enum Growth_type{ONLY_BIRTH, CHANGE_BIRTH, CHANGE_DEATH, CHANGE_BOTH};
 
 enum Telo_type{NONTEL, PTEL, QTEL, COMPLETE};
 enum Adj_type{INTERVAL, REF, VAR};   // 0: interval, 1: reference, 2: variant
-enum Junc_type{HEAD, TAIL};
+enum Junc_type{HEAD, TAIL};  // 0: +, 1: -
 
 
-// const int NCOL_BP_FILE = 7;  some intput may not have frequency 
+const int NCOL_BP_FILE = 6;  // some intput may not have frequency 
 
 const double PROB_INTER = 1e-9;
 const double PROB_SELF = 1e-12;
@@ -468,7 +479,7 @@ void get_chr_prob_from_file(const string& filename, int verbose = 0){
 }
 
 
-// file format: "chr1"    "pos1"    "strand1" "chr2"  "pos2"    "strand2"
+// file format: "chr1"    "pos1"    "strand1" "chr2"  "pos2"    "strand2" "frac"
 // use set to ensure uniqueness
 // vector<int>& intra_distance: distances of breakpoints on the same chromosome
 // map<int, int>& inter_chrom: connection of different chromosomes
@@ -497,13 +508,12 @@ vector<pos_bp> get_bp_from_file(const string& filename, vector<double>& bp_fracs
     stringstream ss(line);
     while (ss >> buf) split.push_back(buf);
     
-    // assert(split.size() == NCOL_BP_FILE);
     double freq = 1;
     if(split.size() > 6){
       freq = atoi(split[6].c_str());
     }
 
-    int chr = atoi(split[0].c_str());
+    int chr = atoi(split[0].c_str()) - 1;
     int pos = atoi(split[1].c_str());
     string strand = split[2].c_str();
     int side = 0;
@@ -512,7 +522,7 @@ vector<pos_bp> get_bp_from_file(const string& filename, vector<double>& bp_fracs
     bps0.insert(bp);
     bp_freq[bp] = freq;
 
-    chr = atoi(split[3].c_str());
+    chr = atoi(split[3].c_str()) - 1;
     pos = atoi(split[4].c_str());
     strand = split[5].c_str();
     side = 0;
@@ -531,6 +541,121 @@ vector<pos_bp> get_bp_from_file(const string& filename, vector<double>& bp_fracs
   
   return bps;
 }
+
+
+// keep telomere and centromere intact to simplify the detection 
+bool is_feasible_bp(int bp, int chr){
+    if(bp <= TELO_ENDS1[chr] || bp >= TELO_ENDS2[chr] || (bp >= CENT_STARTS[chr] && bp <= CENT_ENDS[chr]) || bp >= CHR_LENGTHS[chr] || bp <= 1){
+    // if((bp >= CHR_LENGTHS[chr] || bp <= 1){      
+      return false;
+    }else{
+      return true;
+    }
+}
+
+// file format: "chr1"    "pos1"    "strand1" "chr2"  "pos2"    "strand2"
+// should be unique
+// Cell_ptr start_cell, 
+// exclude those disrupting telomere or centromere and falling outside chr boundary
+vector<pos_sv> get_common_sv_from_file(const string& filename, int verbose = 0){
+  if(verbose) cout << "\nReading breakpoints from " << filename << endl;
+
+  ifstream infile(filename);
+  if(!infile.is_open()){
+    std::cerr << "Error: open of input data unsuccessful: " << filename << std::endl;
+    exit(FAIL);
+  }
+
+  vector<pos_sv> svs;
+  std::string line;
+  getline(infile, line);  // skip header
+  while(!getline(infile, line).eof()){
+    if(verbose > 1) cout << line << endl;
+    if(line.empty()){
+      if(verbose > 1) cout << "empty line" << endl;
+      continue;
+    } 
+    std::vector<std::string> split;
+    std::string buf;
+    stringstream ss(line);
+    while (ss >> buf) split.push_back(buf);
+    
+    assert(split.size() == NCOL_BP_FILE);
+
+    int chr1 = atoi(split[0].c_str()) - 1;
+    int pos1 = atoi(split[1].c_str());
+    if(!is_feasible_bp(pos1, chr1)){
+      continue;
+    }
+    string strand1 = split[2].c_str();
+    int side1 = 0;
+    if(strand1 == "-") side1 = 1;    
+
+    int chr2 = atoi(split[3].c_str()) - 1;
+    int pos2 = atoi(split[4].c_str());
+    if(!is_feasible_bp(pos2, chr2)){
+      continue;
+    }    
+    string strand2 = split[5].c_str();
+    int side2 = 0;
+    if(strand2 == "-") side2 = 1; 
+
+    // will be counted at the end as all the SVs are stored in the same data structure
+    // if(chr1 != chr2){
+    //   start_cell->n_tra += 1;
+    // }else{
+    //   if(strand1 == "+" && strand2 == "+"){
+    //     start_cell->n_del += 1;
+    //   }else if(strand1 == "+" && strand2 == "-"){
+    //     start_cell->n_h2h += 1;
+    //   }else if(strand1 == "-" && strand2 == "-"){
+    //     start_cell->n_t2t += 1;
+    //   }else{
+    //     assert(strand1 == "-" && strand2 == "+");
+    //     start_cell->n_dup += 1;
+    //   }
+    // }
+
+    pos_sv sv = {chr1, pos1, side1, chr2, pos2, side2};
+    svs.push_back(sv); 
+
+    // if(verbose > 1){
+    //   cout << "READ: " << chr1 << "\t" << pos1 << "\t" << side1 << "\t" << chr2 << "\t" << pos2 << "\t" << side2 << endl;
+    // }
+  }
+  if(verbose > 1) cout << "Finish reading " << svs.size() << " common structural variants " << endl;
+
+  return svs;
+}
+
+
+// from https://chat.openai.com/
+template <typename T>
+void insert_sorted_vec(std::vector<T>& vec, const T& value) {
+    typename std::vector<T>::iterator it = vec.begin();
+    while (it != vec.end() && value > *it) {
+        ++it;
+    }
+    vec.insert(it, value);
+}
+
+
+// finds the two values adjacent to a target value in a sorted vector
+// must be in the middle of the vector, as the breakpoint is always between the two endpoints
+// from https://chat.openai.com/
+template <typename T>
+std::pair<T, T> find_adjacent_values(const std::vector<T>& vec, const T& target) {
+    typename std::vector<T>::const_iterator it = std::lower_bound(vec.begin(), vec.end(), target);
+    
+    assert(it != vec.end() && it != vec.begin());
+
+    // Target value is between two elements in the vector
+    T lower = *(it - 1);
+    T upper = *(it + 1);
+    
+    return std::make_pair(lower, upper);
+}
+
 
 
 string get_side_string(int side){

@@ -380,7 +380,7 @@ plot_SV <- function(fname){
 }
 
 
-plot_CN_SV <- function(fsv, fcnv, cutoff = 5*10e4){
+plot_CN_SV <- function(fsv, fcnv, ref = "hg38", cutoff = 5*10e4){
   # get CN data
   cnsel = get_CN(fcnv, cutoff)
   # cnsel = cnsel %>% mutate(value1 = 1, value2 = 1)   # for normal data
@@ -396,7 +396,7 @@ plot_CN_SV <- function(fsv, fcnv, cutoff = 5*10e4){
   name <- ""
   jpeg(outfile, height=800, width=800)
   
-  circos.initializeWithIdeogram(species="hg38", chromosome.index = paste0("chr", seq(1:22)))
+  circos.initializeWithIdeogram(species=ref, chromosome.index = paste0("chr", seq(1:22)))
 
   circos.genomicHeatmap(cnsel, col = col_fun, side = "inside", border = "white")
   

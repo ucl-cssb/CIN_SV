@@ -275,7 +275,6 @@ public:
         // genome information will be recomputed later
     }
 
-
     /*********************** functions related to mutation generations **************************/
     // pass a path and related objects to both daughter cells, assuming correct implicit copy, decrpetated after explicit copy
     void inherit_path_both(path* p, Cell_ptr dcell1, Cell_ptr dcell2){
