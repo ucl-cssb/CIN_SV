@@ -26,7 +26,7 @@ struct bp_interval{
   int haplotype;
   int left_jid;
   int right_jid;
-  bool is_inverted;
+  bool is_inverted;  // the traverse direction is from end to start
 };
 
 
@@ -398,6 +398,7 @@ public:
     }
 
 
+    // called when splitting complex paths
     void break_circle(path* p2split, int verbose = 0){
         int nnode = p2split->nodes.size();
         breakpoint* js = g->breakpoints[p2split->nodes[0]];
@@ -649,6 +650,7 @@ public:
 
 
     // construct a new path starting from a specific breakpoint
+    // called by fragment_path, split_path_from_bp, segregate_polycentric
     void get_path_from_bp(path* p, breakpoint* js, double frac_unrepaired, double circular_prob, int verbose = 0) {
         js->path_ID = p->id;
         p->nodes.push_back(js->id);
@@ -657,19 +659,38 @@ public:
           js->print();
         }
         // there will be no cycles
-        g->get_connected_breakpoint(js, p, g->adjacencies, false, verbose);
+        g->get_connected_breakpoint(js, p, g->adjacencies, true, verbose);
 
-        if(verbose > 1) {
-          cout << "setting circular path type at probability " << circular_prob << endl;
-        }          
-        double u2 = runiform(r, 0, 1);
-        if(u2 < circular_prob){
-            g->set_path_type(p, true, verbose);
-        }else{
-            g->set_path_type(p, false, verbose);
-        } 
+        int size = p->nodes.size();
+        if(g->breakpoints[p->nodes[0]]->id == g->breakpoints[p->nodes[size-1]]->id){
+          if(verbose > 0) cout << "set circle to itself\n";
+          p->nodes.pop_back();
+          p->is_circle = true;
+        }
+
+        if(!g->validate_path(p)){
+          cout << "Wrong path before using circular_prob from breakpoint " << js->id << endl;
+          exit(FAIL);
+        }
+
+        if(!p->is_circle){
+          if(verbose > 1) {
+            cout << "setting circular path type at probability " << circular_prob << endl;
+          }          
+          double u2 = runiform(r, 0, 1);
+          if(u2 < circular_prob){
+              g->set_path_type(p, true, verbose);
+          }else{
+              g->set_path_type(p, false, verbose);
+          } 
+        }
 
         assert(p->n_centromere <= 1);
+
+        if(!g->validate_path(p)){
+          cout << "Wrong path after using circular_prob from breakpoint " << js->id << endl;
+          exit(FAIL);
+        }
 
         if(verbose > 1){
           cout << "\nconstructed a new path " << p->id + 1 << " at breakpoint " << js->id << endl;
@@ -678,6 +699,95 @@ public:
     }
 
  
+    // break an edge by adding new breakpoints
+    bool break_edge(path* p, adjacency* e, vector<breakpoint*>& new_bps, bool is_inverted, int& bcount, int& ntrial, int& nfail, int& nbreak_succ, int& jid, int& aid, int eid, int nbreak, int verbose = 0){
+    // double u2 = runiform(r, 0, 1);
+    // if(u2 < 0.5){  // break this edge
+        if(verbose > 1){
+          cout << "break on edge " << e->id << endl;
+          g->breakpoints[e->junc_id1]->print();
+          g->breakpoints[e->junc_id2]->print();
+          e->print();
+        }
+
+        // set the start and end node by location
+        int p1 = g->breakpoints[e->junc_id1]->pos;
+        int p2 = g->breakpoints[e->junc_id2]->pos;
+        int ps = p1;
+        int pe = p2;
+        if(p1 > p2){
+          ps = p2;
+          pe = p1;
+        }
+
+        bcount++;
+
+        int chr = g->breakpoints[e->junc_id1]->chr;
+        int haplotype = g->breakpoints[e->junc_id1]->haplotype;
+        assert(g->breakpoints[e->junc_id1]->chr == g->breakpoints[e->junc_id2]->chr);
+        assert(g->breakpoints[e->junc_id1]->haplotype == g->breakpoints[e->junc_id2]->haplotype);
+        int bp = 0;
+        int left_jid = -1;
+        int right_jid = -1;
+
+        do{
+          ntrial++;
+          bp = (int)runiform(r, ps, pe);
+          left_jid = e->junc_id1;
+          right_jid = e->junc_id2;
+        }while((bp <= TELO_ENDS1[chr] || bp >= TELO_ENDS2[chr] || (bp >= CENT_STARTS[chr] && bp <= CENT_ENDS[chr])) && ntrial <= nbreak);
+
+        // it may be impossible to split the region without breaking telomore or centromere
+        if(ntrial > nbreak){
+          nfail++;
+          // continue;
+          return false;
+        }
+
+        nbreak_succ++;
+
+        // remove old edges, add new edges, jid and aid updated after adding new breakpoints
+        g->add_new_breakpoint(jid, aid, chr, bp, haplotype, left_jid, right_jid, false, verbose);
+
+        // // record both breakpoints for repairing
+        // local_bps.push_back(g->breakpoints[jid - 2]);
+        // local_bps.push_back(g->breakpoints[jid - 1]);
+
+        // always add the right (based on the direction of the edge) most breakpoint to avoid duplicated path
+        if(is_inverted){
+          breakpoint* bp1 = g->breakpoints[jid - 2];
+          assert(bp1->id == jid - 2);
+          new_bps.push_back(bp1);
+          if(verbose > 1){
+            cout << "Inverted breakpoint interval " << endl;
+            cout << "storing new breakpoints with current jid " << jid << endl;
+            bp1->print();
+          }
+        }else{
+          breakpoint* bp2 = g->breakpoints[jid - 1];
+          assert(bp2->id == jid - 1);
+          new_bps.push_back(bp2);
+          if(verbose > 1){
+            cout << "storing new breakpoints with current jid " << jid << endl;
+            bp2->print();
+          }
+        }
+
+        if(verbose > 1){
+          cout << "Updating path with new edges " << endl;
+        }
+
+        // no need to add new breakpoints, no need to keep edge order
+        // what matters is the new segment where new breaks can be introduced
+        p->edges.erase(p->edges.begin() + eid);  // remove the old edge
+        // record the two new edges
+        p->edges.push_back(aid - 2);
+        p->edges.push_back(aid - 1);
+    // }   
+      return true;     
+    }
+
+
     // new_bps: new breakpoints introduced during fragmentation after repairing
     // for simplification, assume all breakpoints are not repaired in mitosis
     bool path_local_fragmentation(path* p, double n_local_frag, vector<breakpoint*>& new_bps, int verbose = 0){
@@ -687,103 +797,30 @@ public:
           cout << "Fragmentize path " << p->id + 1 << " in cell " << cell_ID << endl;
           p->print();
         }
+
         // generate DSBs on the selected path, form nbreak+1 new paths
         int bcount = 0;  
         int ntrial = 0;
         int nfail = 0;
-        vector<breakpoint*> local_bps;
+        // vector<breakpoint*> local_bps;
         int jid = g->breakpoints.rbegin()->first + 1;
         int aid = g->adjacencies.rbegin()->first + 1;
+
         while(bcount != nbreak){
           // randomly pick an edge
-          int eid = myrng(p->edges.size());
+          int eid = myrng(p->edges.size());  // will be updated with new edges, so a new edge can also be broken 
           adjacency* e = g->adjacencies[p->edges[eid]];
-          bool is_inverted = e->is_inverted;
           if(verbose > 1){
             cout << "selected edge " << eid << endl;
             e->print();
           }
+          bool is_inverted = e->is_inverted;  // record the value as the edge will be broken when adding new breakpoint
 
-          int p1 = g->breakpoints[e->junc_id1]->pos;
-          int p2 = g->breakpoints[e->junc_id2]->pos;
-          int ps = p1;
-          int pe = p2;
-          if(p1 > p2){
-            ps = p2;
-            pe = p1;
-          }
-          if(e->type == INTERVAL){
-            // double u2 = runiform(r, 0, 1);
-            // if(u2 < 0.5){  // break this edge
-                if(verbose > 1){
-                  cout << "break on edge " << e->id << endl;
-                  g->breakpoints[e->junc_id1]->print();
-                  g->breakpoints[e->junc_id2]->print();
-                  e->print();
-                }
-
-                bcount++;
-
-                int chr = g->breakpoints[e->junc_id1]->chr;
-                int haplotype = g->breakpoints[e->junc_id1]->haplotype;
-                assert(g->breakpoints[e->junc_id1]->chr == g->breakpoints[e->junc_id2]->chr);
-                assert(g->breakpoints[e->junc_id1]->haplotype == g->breakpoints[e->junc_id2]->haplotype);
-                int bp = 0;
-                int left_jid = -1;
-                int right_jid = -1;
-
-                do{
-                  ntrial++;
-                  bp = (int)runiform(r, ps, pe);
-                  left_jid = e->junc_id1;
-                  right_jid = e->junc_id2;
-                }while((bp <= TELO_ENDS1[chr] || bp >= TELO_ENDS2[chr] || (bp >= CENT_STARTS[chr] && bp <= CENT_ENDS[chr])) && ntrial <= nbreak);
-
-                // it may be impossible to split the region without breaking telomore or centromere
-                if(ntrial > nbreak){
-                  nfail++;
-                  continue;
-                }
-
-                nbreak_succ++;
-
-                // remove old edges, add new edges
-                g->add_new_breakpoint(jid, aid, chr, bp, haplotype, left_jid, right_jid, false, verbose);
-
-                // record both breakpoints for repairing
-                local_bps.push_back(g->breakpoints[jid - 2]);
-                local_bps.push_back(g->breakpoints[jid - 1]);
-
-                // always add the right (based on the direction of the edge) most breakpoint to avoid duplicated path
-                if(is_inverted){
-                  breakpoint* bp1 = g->breakpoints[jid - 2];
-                  assert(bp1->id == jid - 2);
-                  new_bps.push_back(bp1);
-                  if(verbose > 1){
-                    cout << "Inverted breakpoint interval " << endl;
-                    cout << "storing new breakpoints with current jid " << jid << endl;
-                    bp1->print();
-                  }
-                }else{
-                  breakpoint* bp2 = g->breakpoints[jid - 1];
-                  assert(bp2->id == jid - 1);
-                  new_bps.push_back(bp2);
-                  if(verbose > 1){
-                    cout << "storing new breakpoints with current jid " << jid << endl;
-                    bp2->print();
-                  }
-                }
-
-                if(verbose > 1){
-                  cout << "Updating path with new edges " << endl;
-                }
-
-                // no need to add new breakpoints, no need to keep edge order
-                // what matters is the new segment where new breaks can be introduced
-                p->edges.erase(p->edges.begin() + eid);
-                p->edges.push_back(aid - 2);
-                p->edges.push_back(aid - 1);
-            // }
+          if(e->type == INTERVAL){    // can only break interval edges
+            bool succ = break_edge(p, e, new_bps, is_inverted, bcount, ntrial, nfail, nbreak_succ, jid, aid, eid, nbreak, verbose);
+            if(!succ){
+              continue;
+            }
           }
         }
         if(nfail == nbreak){  // all trials to add breakpoints failed
@@ -795,11 +832,16 @@ public:
 
 
     void fragment_path(path* p, int& pid, double n_local_frag, double frac_unrepaired, double circular_prob, Cell_ptr dcell1, Cell_ptr dcell2, int verbose = 0){
+        assert(!p->is_circle);
+        if(verbose > 1){
+          cout << "\nfragment path " << p->id + 1 << endl;
+          g->print_full_path(p);
+        }
+       
         // p will be broken into new paths
         vector<breakpoint*> new_bps;
         bool splited = path_local_fragmentation(p, n_local_frag, new_bps, verbose);
-        if(!splited){
-          g->validate_path(p);
+        if(!splited){   // keep the orignial path
           g->paths[p->id] = p;
           distribute_path_random(p, dcell1, dcell2, verbose);
           return;
@@ -813,6 +855,7 @@ public:
             njs->print();
           }  
 
+          // get new path from the fragmented breakpoints
           path* p2 = new path(++pid, this->cell_ID, COMPLETE);              
           get_path_from_bp(p2, njs, frac_unrepaired, circular_prob, verbose);
 
@@ -820,7 +863,6 @@ public:
             cout << "Path " << p2->id + 1 << " from breakpoint " << njs->id << endl;               
             p2->print();
           }
-          g->validate_path(p2);
           g->paths[p2->id] = p2;
           distribute_path_random(p2, dcell1, dcell2, verbose);
         }
@@ -831,13 +873,13 @@ public:
     void split_path_from_bp(int& pid, breakpoint* js, double n_local_frag, double frac_unrepaired, double circular_prob, Cell_ptr dcell1, Cell_ptr dcell2, int verbose = 0){
         //  each path will have a unique ID
         path* p = new path(++pid, this->cell_ID, COMPLETE);
+        // the path can become circular by manually adding an edge when circular_prob > 0
         get_path_from_bp(p, js, frac_unrepaired, circular_prob, verbose);
 
-        if(n_local_frag == 0){
+        if(n_local_frag == 0 || p->is_circle){
           if(verbose > 1){
-            cout << "\nThe new path has one centromere after simple break" << endl;
+            cout << "\nThe new path has one centromere after simple break or become circular" << endl;
           }
-          g->validate_path(p);
           g->paths[p->id] = p;
           distribute_path_random(p, dcell1, dcell2, verbose);
         }else{
@@ -849,7 +891,6 @@ public:
               }
               fragment_path(p, pid, n_local_frag, frac_unrepaired, circular_prob, dcell1, dcell2, verbose);
           }else{
-              g->validate_path(p);
               g->paths[p->id] = p;
               distribute_path_random(p, dcell1, dcell2, verbose);
           }
@@ -947,8 +988,8 @@ public:
           for(auto js : junc_starts){
             path* p = new path(++pid, this->cell_ID, COMPLETE);
             get_path_from_bp(p, g->breakpoints[js], frac_unrepaired, circular_prob, verbose);
-            g->validate_path(p);
-            g->paths[p->id] = p;          
+            g->paths[p->id] = p;     
+            // work well even if the new path becomes circular     
             split_new_path_2centro(p, cell_ID1, cell_ID2, dcell1, dcell2, verbose);   
           }   
         }else{      
@@ -958,7 +999,7 @@ public:
             get_path_from_bp(p, g->breakpoints[js], frac_unrepaired, circular_prob, verbose);
 
             double u = runiform(r, 0, 1);
-            if(u < 0.5){
+            if(u < 0.5 && !p->is_circle){
               if(verbose > 0){
                 cout << "\nThe new path has local fragmentation with probability 0.5" << endl;
               }
@@ -967,7 +1008,6 @@ public:
               if(verbose > 0){
                 cout << "\nThe new path has no local fragmentation with probability 0.5" << endl;
               }             
-              g->validate_path(p);
               g->paths[p->id] = p;          
               split_new_path_2centro(p, cell_ID1, cell_ID2, dcell1, dcell2, verbose); 
             }  
@@ -1098,7 +1138,7 @@ public:
             p2->sibling = p->id;
             p->sibling = p2->id;
 
-            g->validate_path(p2);
+            // g->validate_path(p2);
             g->paths[p2->id] = p2;
 
             if(verbose > 1){

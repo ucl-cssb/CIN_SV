@@ -10,7 +10,7 @@ library(ape)
 
 # not show sample names
 theme0 = theme(legend.position = "none",
-               #strip.text.x = element_blank(),
+               strip.text.x = element_blank(),
                strip.text.y = element_blank(),
                # strip.text.y.left = element_text(size=6, angle = 0),
                strip.text.y.left = element_blank(),
@@ -55,11 +55,17 @@ theme1 = theme(legend.position = "none",
 
 # cn_colors1 = c("#6283A9","#bdd7e7","#f0f0f0","#FCAE91", "#B9574E", "#76000D", "#8B0000", "#000000")
 # Max CN to show in heatmap
-MAX_CN = 6
+# MAX_CN = 6
+# # For absolute CN 0 to 6 (obtained from https://colorbrewer2.org, 5 classes, sequential data)
+# cn_colors1 = c("#6283A9","#bdd7e7","#f0f0f0", '#fdcc8a','#fc8d59','#e34a33','#b30000')
+
+MAX_CN = 12
 # For absolute CN 0 to 8 (obtained from https://colorbrewer2.org, 8 classes, sequential data)
+cn_colors1 = c("#6283A9","#bdd7e7","#f0f0f0", '#ffffcc','#ffeda0','#fed976','#feb24c','#fd8d3c','#fc4e2a','#e31a1c','#bd0026','#800026', '#000000')
+
+# MAX_CN = 7
 # cn_colors1 = c("#6283A9","#bdd7e7","#f0f0f0", '#fdd49e', '#fdbb84','#fc8d59','#ef6548','#d7301f','#990000')
-# For absolute CN 0 to 6 (obtained from https://colorbrewer2.org, 5 classes, sequential data)
-cn_colors1 = c("#6283A9","#bdd7e7","#f0f0f0", '#fdcc8a','#fc8d59','#e34a33','#b30000')
+
 # For relative CN -4 to 4
 cn_colors2 = c('#08519c','#3182bd', '#6baed6', '#9ecae1', "#f0f0f0", '#fdcc8a','#fc8d59','#e34a33','#b30000')
 
@@ -96,7 +102,6 @@ plot.cn.heatmap <- function(d_seg, main, type="absolute", theme = theme1, cn_col
   
   return(p)
 }
-
 
 
 # seg.cn must be a data frame 
@@ -338,8 +343,8 @@ get_SV <- function(fname){
 }
 
 
-# cutoff not used, showing all regions
-get_CN <- function(fname, cutoff = 5*10e4){
+# cutoff not used, showing all regions, cutoff = 5*10e4
+get_CN <- function(fname){
   cns = read_tsv(fname, show_col_types = F)
 
   # cns %>% rowwise() %>% mutate(cnA = as.numeric(strsplit(strsplit(strsplit(extra, "=")[[1]][2],":")[[1]][3],",")[[1]][1]), cnB = as.numeric(strsplit(strsplit(strsplit(extra, "=")[[1]][2],":")[[1]][4],"}")[[1]][1])) -> cns
@@ -380,9 +385,9 @@ plot_SV <- function(fname){
 }
 
 
-plot_CN_SV <- function(fsv, fcnv, ref = "hg38", cutoff = 5*10e4){
+plot_CN_SV <- function(fsv, fcnv, ref = "hg38"){
   # get CN data
-  cnsel = get_CN(fcnv, cutoff)
+  cnsel = get_CN(fcnv)
   # cnsel = cnsel %>% mutate(value1 = 1, value2 = 1)   # for normal data
   
   # CN colors for each haplotype
@@ -402,21 +407,26 @@ plot_CN_SV <- function(fsv, fcnv, ref = "hg38", cutoff = 5*10e4){
   
   # get SV data
   res = get_SV(fsv)
-  if(!is.na(res)){
+  # if(!is.na(res)){
+  if(length(res) > 0){    
     svs = res$svs
     sv.first = res$sv.first
     sv.second = res$sv.second
-    
+    # map 
     # SV colors
     # pa <- c("#377eb8","#d95f02","#33a02c")
     # names(pa) <- c("DEL","INS","INV")
     # pa <- c("#1F78B4","#FF7F00","#33A02C","#E31A1C")
     # names(pa) <- c("DEL","DUP","H2HINV","T2TINV")
     pa <- c("blue1","red", "black", "forestgreen", "purple")
+    
     svtype <- c("DEL", "DUP", "H2HINV", "T2TINV", "BND")
+    df_svt = data.frame(svc = 1:length(svtype), svclass = svtype)
+    svs_num = merge(svs, df_svt, by = c("svclass"))
+    
     names(pa) <- c("DEL", "DUP", "H2HINV", "T2TINV", "BND")    
-    col_fun_sv = colorRamp2(svtype, pa)
-    col <- pa[svs$svclass]
+    col_fun_sv = colorRamp2::colorRamp2(1:length(svtype), pa)
+    col <- pa[svs_num$svc]
     
     # lgd_heatmap = Legend(at = seq(0:3)-1, col_fun = col_fun, legend_gp = gpar(col = 0:3), title_position = "topleft", title = "Copy number")
     # lgd_links = Legend(at = c("DEL","DUP","H2HINV","T2TINV"), type = "lines", itle_position = "topleft", title = "Links")

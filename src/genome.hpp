@@ -643,7 +643,7 @@ public:
       p->nodes.push_back(j1->id);
       p->nodes.push_back(j2->id);
       p->edges.push_back(adj->id);
-      validate_path(p);
+      // validate_path(p);
       paths[p->id] = p;
 
       haplotype = 1;
@@ -663,7 +663,7 @@ public:
       p2->nodes.push_back(j3->id);
       p2->nodes.push_back(j4->id);
       p2->edges.push_back(adj2->id);
-      validate_path(p2);
+      // validate_path(p2);
       paths[p2->id] = p2;
     }
 
@@ -1544,12 +1544,7 @@ public:
 
   // used when constructing a new path starting from a specific breakpoint
   void set_path_type(path* p, bool set_circle = true, int verbose = 0){
-    if(verbose > 1){
-      cout << "set type for path " << p->id + 1 << endl;
-      p->print();
-      write_path(p, cout);
-    }
-
+    // verbose = 0;
     int size = p->nodes.size();
     int start = p->nodes[0];
     int end = p->nodes[size - 1];
@@ -1563,59 +1558,11 @@ public:
       p->type = QTEL;
     }else{     // nonTel
       p->type = NONTEL;
+      assert(!p->is_circle);
+      assert(p->nodes.size() > 1);
       // set to circular if there is no centromere
-      if(p->n_centromere == 0 && set_circle && start != end){
-        if((breakpoints[start]->left_jid == -1 || breakpoints[start]->right_jid == -1)){
-          if(breakpoints[start]->left_jid == -1){
-            breakpoints[start]->left_jid = end;
-          }else{
-            breakpoints[start]->right_jid = end;
-          }
-        }
-
-        if((breakpoints[end]->left_jid == -1 || breakpoints[end]->right_jid == -1)){
-          if(breakpoints[end]->left_jid == -1){
-            breakpoints[end]->left_jid = start;
-          }else{
-            breakpoints[end]->right_jid = start;
-          }
-        }
-
-        // add another adjacency from end to start
-        int aid = adjacencies.rbegin()->first + 1;
-        breakpoint* j1 = breakpoints[end];
-        breakpoint* j2 = breakpoints[start];
-        breakpoint* jm = NULL;
-        if(j1->chr == j2->chr && j1->pos > j2->pos){
-          if(verbose > 1){
-            cout << "switch j1 and j2 to have increasing coordinates" << endl;
-            j1->print();
-            j2->print();
-          }
-
-          jm = j1;
-          j1 = j2;
-          j2 = jm;
-
-          if(verbose > 1){
-            cout << "switched j1 and j2 with increasing coordinates" << endl;
-            j1->print();
-            j2->print();
-          }
-        }
-        SV_type sv_type = set_var_type(j1, j2, verbose);
-        adjacency* adj = new adjacency(cell_ID, aid, p->id, end, start, VAR, NONTEL, sv_type);
-        adj->is_inverted = true;
-
-        p->edges.push_back(aid);
-        adjacencies[aid] = adj;
-
-        // p->nodes.push_back(start);
-
-        breakpoints[end]->is_repaired = true;
-        breakpoints[start]->is_repaired = true;
-        if(verbose > 0) cout << "set circle manually by adding an adjacency" << endl;
-        p->is_circle = true;
+      if(p->n_centromere == 0 && set_circle){
+        set_circle_by_edge(p, start, end, verbose);
       }
     }
     if(verbose > 1) p->print();
@@ -1701,7 +1648,7 @@ public:
   // is_forward: true -- left to right (5' to 3', p-tel to q-tel), 1 -- right to left
   // check left breakpoint if the right breakpoint is the same as jp
   // check_interval: check whether the 1st adjacency is an interval
-  // circular path will have the start node duplicated and removed during validation validate_path()
+  // circular path may have the start node duplicated, which will be removed later
   void get_connected_breakpoint(breakpoint* js, path* p, map<int, adjacency*>& adjacencies, bool check_interval = false, int verbose = 0){
     // verbose = 1;
     int nei = js->right_jid;
@@ -1805,39 +1752,150 @@ public:
   }
 
 
-  void validate_path(path* p){
+  void print_full_path(path* p){
+    p->print();
+    write_path(p, cout);
+    for(auto n : p->nodes){
+      breakpoints[n]->print();
+    }
+    for(auto e : p->edges){
+      adjacencies[e]->print();
+    }      
+  }
+
+
+  // check the consistency of nodes and edges in a path of the genome 
+  // after calling get_derivative_genome, get_path_from_bp
+  bool validate_path(path* p){
     check_duplicated_path(p);
 
+    // remove duplicated start node  
     if(p->nodes[0] == p->nodes[p->nodes.size() - 1]){
-      p->nodes.pop_back();
+      // if(!p->is_circle){  // function may be called when circle tag is not set
+      //   cout << "circlurar path should have the right tag!" << endl;
+      //   p->print();
+      //   exit(FAIL);
+      // }  
+      if(p->nodes.size() % 2 == 0){
+        cout << "Incorrect number of nodes in circular path " << p->id + 1 << endl;
+        print_full_path(p);
+      }
+      // p->nodes.pop_back();   // assume duplicated node has been removed
     }
 
-    if(p->nodes.size() % 2 != 0){
+    if(p->nodes.size() % 2 != 0){   // must be satisfied due to alternative path types
       cout << "Incorrect number of nodes in path " << p->id + 1 << endl;
-      p->print();
-      write_path(p, cout);
-      exit(FAIL);
+      print_full_path(p);
+      // exit(FAIL);
+      return false;
     }
 
     if(!p->is_circle){
       if(p->nodes.size() != p->edges.size() + 1){
+        // set_circle_by_edge(p, 0);  // correct before reporting error
         cout << "Incorrect number of edges in linear path " << p->id + 1 << endl;
-        p->print();
-        write_path(p, cout);
-        exit(FAIL);
+        print_full_path(p);
+        // exit(FAIL);
+        return false;
       }
     }else{
        if(p->nodes.size() != p->edges.size()){
         cout << "Incorrect number of edges in circular path " << p->id + 1 << endl;
-        p->print();
-        write_path(p, cout);
-        exit(FAIL);
+        print_full_path(p);
+        // exit(FAIL);
+        return false;
       }
+    }
+    return true;
+  }
+
+
+  // set a path to be a cycle after fragmentation by connecting start and end node directly 
+  void set_circle_by_edge(path* p, int start, int end, int verbose = 0){
+    // int start_edge = p->edges[0];
+    // int end_edge = p->edges[p->edges.size() - 1];
+    // if(adjacencies[start_edge]->junc_id1 == adjacencies[end_edge]->junc_id1 ||
+    //   adjacencies[start_edge]->junc_id1 == adjacencies[end_edge]->junc_id2 ||
+    //   adjacencies[start_edge]->junc_id2 == adjacencies[end_edge]->junc_id1 ||
+    //   adjacencies[start_edge]->junc_id2 == adjacencies[end_edge]->junc_id2){
+    //     if(verbose > 0) cout << "set circle obtained by connecting two different nodes \n";
+    //     p->is_circle = true;
+    // }
+    // verbose = 1;
+    if(verbose > 0){
+      cout << "\nset circular type for path " << p->id + 1 << endl;
+    }
+
+    if((!(breakpoints[start]->left_jid == -1 || breakpoints[start]->right_jid == -1))||
+    (!(breakpoints[end]->left_jid == -1 || breakpoints[end]->right_jid == -1))){
+        cout << "The end node must be disconnected at one side !" << endl;
+        print_full_path(p);
+        exit(FAIL);
+    }
+    // assert(!breakpoints[start]->is_repaired);   // is_repaired may not be set properly
+    if(breakpoints[start]->left_jid == -1){
+      breakpoints[start]->left_jid = end;
+    }else{
+      breakpoints[start]->right_jid = end;
+    }
+    // connect end node to start node
+    // assert(!breakpoints[end]->is_repaired);
+    if(breakpoints[end]->left_jid == -1){
+      breakpoints[end]->left_jid = start;
+    }else{
+      breakpoints[end]->right_jid = start;
+    }
+    
+    // add another adjacency from end to start
+    breakpoint* j1 = breakpoints[end];
+    breakpoint* j2 = breakpoints[start];
+    breakpoint* jm = NULL;
+    // ensure the coordinates of j1 is smaller than j2 to set SV type
+    if(j1->chr == j2->chr && j1->pos > j2->pos){
+      // if(verbose > 1){
+      //   cout << "to switch j1 and j2 to have increasing coordinates" << endl;
+      //   j1->print();
+      //   j2->print();
+      // }
+      jm = j1;
+      j1 = j2;
+      j2 = jm;
+      // if(verbose > 1){
+      //   cout << "switched j1 and j2 with increasing coordinates" << endl;
+      //   j1->print();
+      //   j2->print();
+      // }
+    }
+
+    SV_type sv_type = set_var_type(j1, j2, verbose);
+    int aid = adjacencies.rbegin()->first + 1;   // id of the new edge    
+    adjacency* adj = new adjacency(cell_ID, aid, p->id, end, start, VAR, NONTEL, sv_type);
+    bool is_inverted = false;
+    if(p->edges.size() == 1){
+      is_inverted = !adjacencies[p->edges[0]]->is_inverted;
+    }
+    adj->is_inverted = is_inverted;  // from end to start
+    assert(adjacencies.find(aid) == adjacencies.end());
+    adjacencies[aid] = adj;
+
+    // p->nodes.push_back(start);
+    p->edges.push_back(aid);
+    assert(p->edges.size() == p->nodes.size());
+
+    breakpoints[end]->is_repaired = true;
+    breakpoints[start]->is_repaired = true;
+    p->is_circle = true;
+
+    if(verbose > 0){
+      cout << "set circle manually by adding an adjacency" << endl;
+      print_full_path(p);
     }
   }
 
+
   // # defines paths that start and end on a telomere prior to S phase
   // # i.e. these paths are fully connected upon completion of G1
+  // circular_prob used for artificial circles as the path will be recomputed in each cycle whatever it is derived
   void get_derivative_genome(double circular_prob, int verbose = 0){
     // verbose = 1;
     // remove previous path connections
@@ -1886,15 +1944,24 @@ public:
       int size = p->nodes.size();
       if(breakpoints[p->nodes[0]]->id == breakpoints[p->nodes[size-1]]->id){
         if(verbose > 0) cout << "set circle to itself\n";
+        p->nodes.pop_back();
         p->is_circle = true;
       }
+      // no need as this is assumed to be formed during fragmentation and the path will remain complete in the subsequent cycles
+      // if(!p->is_circle && circular_prob > 0 && p->edges.size() > 1){ 
+      //   set_circle_by_edge(p, verbose);
+      // }
       if(breakpoints[p->nodes[size-1]]->is_end){
         p->type = COMPLETE; // end nodes should also be telomere
-      }else{
+      }else{ 
         p->type = PTEL; // pTel
       }
 
-      validate_path(p);
+      if(!validate_path(p)){
+        cout << "Wrong path from junc_starts breakpoint " << js->id << endl;
+        exit(FAIL);
+      }
+
       if(verbose > 1){
         cout << "path after validation\n";
         p->print();
@@ -1940,15 +2007,22 @@ public:
       int size = p->nodes.size();
       if(breakpoints[p->nodes[0]]->id == breakpoints[p->nodes[size-1]]->id){
         if(verbose > 0) cout << "set circle to itself\n";
+        p->nodes.pop_back();
         p->is_circle = true;
       }
+      // if(!p->is_circle && circular_prob > 0 && p->edges.size() > 1){ 
+      //   set_circle_by_edge(p, verbose);
+      // }      
       if(breakpoints[p->nodes[size-1]]->is_end){
         p->type = COMPLETE;
       }else{
         p->type = QTEL;
       }
 
-      validate_path(p);
+      if(!validate_path(p)){
+        cout << "Wrong path from junc_unconnected_lends breakpoint " << js->id << endl;
+        exit(FAIL);
+      }
       if(verbose > 1){
         cout << "path after validation\n";
         p->print();
@@ -2000,11 +2074,18 @@ public:
       int size = p->nodes.size();
       if(breakpoints[p->nodes[0]]->id == breakpoints[p->nodes[size-1]]->id){
         if(verbose > 0) cout << "set circle to itself\n";
+        p->nodes.pop_back();
         p->is_circle = true;
       }
+      // if(!p->is_circle && circular_prob > 0 && p->edges.size() > 1){ 
+      //   set_circle_by_edge(p, verbose);
+      // }      
       assert(!breakpoints[p->nodes[size-1]]->is_end);
 
-      validate_path(p);
+      if(!validate_path(p)){
+        cout << "Wrong path from junc_unconnected breakpoint " << js->id << endl;
+        exit(FAIL);
+      }
       if(verbose > 1){
         cout << "path after validation\n";
         p->print();
@@ -2047,11 +2128,18 @@ public:
       int size = p->nodes.size();
       if(breakpoints[p->nodes[0]]->id == breakpoints[p->nodes[size-1]]->id){
         if(verbose > 0) cout << "set circle to itself\n";
+        p->nodes.pop_back();
         p->is_circle = true;
       }
+      // if(!p->is_circle && circular_prob > 0 && p->edges.size() > 1){ 
+      //   set_circle_by_edge(p, verbose);
+      // }     
       assert(!breakpoints[p->nodes[size-1]]->is_end);
 
-      validate_path(p);
+      if(!validate_path(p)){
+        cout << "Wrong path from junc_remained breakpoint " << js->id << endl;
+        exit(FAIL);
+      }
       if(verbose > 1){
         cout << "path after validation\n";
         p->print();
