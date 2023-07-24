@@ -72,6 +72,8 @@ const int NORM_PLOIDY = 2;
 const int BIN_SIZE = 500000;    // used in ploidy computation
 const int MAX_NUM_WGD = 1; 
 
+const double MIN_FITNESS = -0.999999;
+
 vector<int> CHR_LENGTHS;
 vector<int> ARM_BOUNDS;
 vector<int> CENT_STARTS;

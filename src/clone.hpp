@@ -355,9 +355,12 @@ public:
 
         // the value may be 0
         if(dcell->surv_prob == 0){
-            dcell->fitness = -0.999999;
+            dcell->fitness = MIN_FITNESS;
         }else{
             dcell->fitness = log(dcell->surv_prob * (1 + dcell->surv_prob)) / log(model.psurv_norm * (1 + model.psurv_norm)) - 1;
+            if(dcell->fitness < MIN_FITNESS){   // avoid very low values
+                dcell->fitness = MIN_FITNESS;
+            }
         }
         
         if(verbose > 0){
