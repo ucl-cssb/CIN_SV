@@ -191,7 +191,7 @@ int main(int argc, char const *argv[]){
     optional.add_options()
       // input files which specifies #sampled cells and CNA informaton
       ("fchr", po::value<string>(&fchr)->default_value(""), "TSV file with chromosome size infomation")
-      ("fbin", po::value<string>(&fbin)->default_value(""), "TSV file with bin size infomation")
+      ("fbin", po::value<string>(&fbin)->default_value(""), "TSV file with bin size infomation, used to get bin-level summary statistics")
       ("fbp", po::value<string>(&fbp)->default_value(""), "TSV file with breakpoints to sample from when introducing new DSBs")
       ("fbp_common", po::value<string>(&fbp_common)->default_value(""), "TSV file with initial breakpoints")
 

@@ -1803,7 +1803,7 @@ public:
    // Follow format of RCK output
     // CN: Chromosome  Start.bp    End.bp allele_1 allele_2
     // SV: <SV>	2	213454835	2	213584799	3to5	0	1	0	1
-    void write_plot(string fname_cn, string fname_sv, int verbose = 0){
+    void write_plot_rck(string fname_cn, string fname_sv, int verbose = 0){
       ofstream fout_cn(fname_cn);
       string header = "Chromosome\tStart.bp\tEnd.bp\tallele_1\tallele_2\n";
       fout_cn << header;
@@ -1831,17 +1831,75 @@ public:
         int cn_BB = ac.cnBB;
 
         string direction = "";
-        if(ap.strand1 == TAIL && ap.strand2 == TAIL){
-          direction = "3to3";
-        }else if(ap.strand1 == HEAD && ap.strand2 == HEAD){
-          direction = "5to5";
-        }else if(ap.strand1 == TAIL && ap.strand2 == HEAD){
-          direction = "3to5";
+        if(ap.chr1 != ap.chr2){
+          direction = "<TRA>";
         }else{
-          assert(ap.strand1 == HEAD && ap.strand2 == TAIL);
-          direction = "5to3";
+          if(ap.strand1 == TAIL && ap.strand2 == TAIL){ //T2TINV
+            direction = "3to3";
+          }else if(ap.strand1 == HEAD && ap.strand2 == HEAD){ //H2HINV
+            direction = "5to5";
+          }else if(ap.strand1 == TAIL && ap.strand2 == HEAD){ //DUP
+            direction = "3to5";
+          }else{
+            assert(ap.strand1 == HEAD && ap.strand2 == TAIL); //DEL
+            direction = "5to3";
+          }
         }
+
         string line = "<SV>\t" + to_string(ap.chr1 + 1) + "\t" + to_string(ap.pos1) + "\t" + to_string(ap.chr2 + 1) + "\t" + to_string(ap.pos2) + "\t" + direction + "\t" + to_string(cn_AA) + "\t" + to_string(cn_AB) + "\t" + to_string(cn_BA) + "\t" + to_string(cn_BB) + "\n";
+        fout << line;
+      }
+
+      fout.close();
+    }
+
+
+   // Follow format of shatterseek output
+    // CN: Chromosome  Start.bp    End.bp allele_1 allele_2
+    // SV: <SV>	2	213454835	2	213584799	3to5	A B
+    void write_plot(string fname_cn, string fname_sv, int verbose = 0){
+      ofstream fout_cn(fname_cn);
+      string header = "Chromosome\tStart.bp\tEnd.bp\tallele_1\tallele_2\n";
+      fout_cn << header;
+      for(auto sg : g->chr_segments){
+        for(auto s : sg.second){
+          // [) interval to avoid manual overlapping
+          string line = to_string(s->chr + 1) + "\t" + to_string(s->start) + "\t" + to_string(s->end) + "\t" + to_string(s->cnA)  + "\t" + to_string(s->cnB) + "\n";
+          fout_cn << line;
+        }
+      }  
+      fout_cn.close();
+
+      ofstream fout(fname_sv);
+      for(auto adjm : g->adjacencies){
+        adjacency* adj = adjm.second;       
+        if(adj->sv_type == NONE) continue;
+        breakpoint* j1 = g->breakpoints[adj->junc_id1];
+        breakpoint* j2 = g->breakpoints[adj->junc_id2];
+
+        breakpoint* jm = NULL;
+        if(j1->chr == j2->chr && j1->pos > j2->pos){
+          jm = j1;
+          j1 = j2;
+          j2 = jm;
+        }        
+        string direction = "";
+        if(j1->chr != j2->chr){
+          direction = "<TRA>";
+        }else{
+          if(j1->side == TAIL && j2->side == TAIL){ //T2TINV
+            direction = "3to3";
+          }else if(j1->side == HEAD && j2->side == HEAD){ //H2HINV
+            direction = "5to5";
+          }else if(j1->side == TAIL && j2->side == HEAD){ //DUP
+            direction = "3to5";
+          }else{
+            assert(j1->side == HEAD && j2->side == TAIL); //DEL
+            direction = "5to3";
+          }
+        }
+         
+        string line = "<SV>\t" + to_string(j1->chr + 1) + "\t" + to_string(j1->pos) + "\t" + to_string(j2->chr + 1) + "\t" + to_string(j2->pos) + "\t" + direction + "\t" + to_string(j1->haplotype) + "\t" + to_string(j2->haplotype) + "\n";
         fout << line;
       }
 
