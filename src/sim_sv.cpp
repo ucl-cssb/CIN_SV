@@ -397,6 +397,9 @@ int main(int argc, char const *argv[]){
         string fname_sv_ss = outdir + "/" + "SVData_c" + midfix + filetype;
         string fname_cn_ss = outdir + "/" + "CNData_c" + midfix + filetype;
         cell->write_shatterseek(fname_cn_ss, fname_sv_ss, verbose);
+
+        fname_cn_ss = outdir + "/" + "CNData_merged_c" + midfix + filetype;
+        cell->write_merged_cn(fname_cn_ss);
       }
 
       if(write_genome){

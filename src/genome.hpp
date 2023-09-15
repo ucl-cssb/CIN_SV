@@ -915,6 +915,7 @@ public:
 
     fout << p->id + 1 << "\t" << shape << "\t" << get_telomere_type_string(p->type) << "\t" << p->n_centromere << "\t";
 
+    int gsize = 0;
     for(auto e : p->edges){
       // cout << "\nedge " << e << endl;
       adjacency *adj = adjacencies[e];
@@ -925,10 +926,12 @@ public:
         j1 = breakpoints[adj->junc_id2];
         j2 = breakpoints[adj->junc_id1];
       }
-
+      if(adj->type == 0){  // only consider intervals
+          gsize += abs(j2->pos - j1->pos) + 1;
+      }     
       fout << (j1->chr % NUM_CHR) + 1 << ":" << get_haplotype_string(j1->haplotype) << ":" << j1->pos << "-" << (j2->chr % NUM_CHR) + 1 << ":" << get_haplotype_string(j2->haplotype) << ":" << j2->pos << ",";
     }
-    fout << endl;
+    fout << "\t" << gsize << endl;
   }
 
   // // find breakpoints by haplotype and chr

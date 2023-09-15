@@ -11,6 +11,10 @@ library(ComplexHeatmap)
 
 # Visualize simulated structural variants
 
+############### basic settings #############
+chr_info = readRDS("~/Gdrive/git/CIN_SV/data/chr_info.rds")
+chr_info_hg38 = readRDS("~/Gdrive/git/CIN_SV/data/chr_info_hg38.rds")
+
 # colors in CN heatmap
 # cn_colors1 = c("#6283A9","#bdd7e7","#f0f0f0","#FCAE91", "#B9574E", "#76000D", "#8B0000", "#000000")
 # Max CN to show in heatmap
@@ -83,9 +87,32 @@ colfunc2<-colorRampPalette(c('darkgrey','darkgrey'))
 colfunc3<-colorRampPalette(c("white","gray"));
 
 
+theme_notxt = theme(legend.position = "none",
+               strip.text.x = element_blank(),
+               strip.text.y = element_blank(),
+               # strip.text.y.left = element_text(size=6, angle = 0),
+               strip.text.y.left = element_blank(),
+               strip.background = element_blank(),
+               axis.line.x = element_blank(),
+               axis.line.y = element_blank(),
+               axis.text.x = element_blank(),
+               axis.text.y = element_blank(),
+               axis.title.y = element_blank(),
+               axis.title.x = element_blank(),
+               axis.ticks.x = element_blank(),
+               axis.ticks.y = element_blank(),
+               panel.grid.minor = element_blank(),
+               panel.grid.major = element_blank(),
+               panel.spacing.y = unit(0, "lines"),
+               panel.spacing.x = unit(0, "lines"),
+               panel.border = element_rect(color = "#d8d8d8", fill = NA, size = .2),
+               panel.background = element_rect(fill = "#f0f0f0")
+)
+ 
+              
 # not show sample names
 theme0 = theme(legend.position = "none",
-               strip.text.x = element_blank(),
+               strip.text.x = element_text(size=5, angle = 0),
                strip.text.y = element_blank(),
                # strip.text.y.left = element_text(size=6, angle = 0),
                strip.text.y.left = element_blank(),
@@ -109,6 +136,7 @@ theme0 = theme(legend.position = "none",
 
 theme1 = theme(legend.position = "none",
                #strip.text.x = element_blank(),
+               strip.text.x = element_text(size=6, angle = 0),
                #strip.text.y = element_blank(),
                strip.text.y.left = element_text(size=6, angle = 0),
                strip.background = element_blank(),
@@ -153,10 +181,10 @@ theme2 = theme(legend.position = "none",
 )
 
 
-
+############### functions #############
 # Plot CNPs of multiple samples as a heatmap for easy comparison
 # Format of d_seg: sample, chrom, start, end, cn
-plot.cn.heatmap <- function(d_seg, main, type="absolute", theme = theme1, cn_colors = cn_colors1, allele_specific = F){
+plot.cn.heatmap <- function(d_seg, main, type="absolute", theme = theme1, cn_colors = cn_colors1, allele_specific = F, tsize = 12){
   d_seg$cn = round(d_seg$cn)
   d_seg$chrom = factor(d_seg$chrom, levels=paste("",c(1:22, "X"),sep=""))
   d_seg$pos = (d_seg$end + d_seg$start) / 2
@@ -182,7 +210,7 @@ plot.cn.heatmap <- function(d_seg, main, type="absolute", theme = theme1, cn_col
     scale_fill_manual(values = cn_colors, limits=cn_vals) +
     scale_y_discrete(breaks = unique(d_seg$sample), expand = c(0,0))+
     scale_x_discrete(expand = c(0,0)) + theme
-  p = p + ggtitle(main)
+  p = p + ggtitle(main) + theme(plot.title = element_text(size=tsize))
   
   return(p)
 }
@@ -527,9 +555,10 @@ plot_CN_SV <- function(fsv, fcnv, ref = "hg38", size = 5, col = col_fun, pa = sv
   circos.genomicHeatmap(cnsel, col = col_fun, side = "inside", border = "white")
   
   # get SV data
+  print(fsv)
   res = get_SV(fsv)
   # if(!is.na(res)){
-  if(!is.na(res) & length(res) > 0){    
+  if(length(res) > 0){    
     svs = res$svs 
     sv.first = res$sv.first
     sv.second = res$sv.second
@@ -1153,7 +1182,8 @@ plot_chr_noCN <- function(SV, t, fplot){
 }
 
 
-# based on code of "signals"
+
+# based on code of "signals", not tested
 make_copynumber_heatmap <- function(copynumber,
                                     clones,
                                     colvals = cn_colours,

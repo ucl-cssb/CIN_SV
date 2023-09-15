@@ -1729,6 +1729,7 @@ public:
       string header = "chr\tstart\tend\textra\n";
       fout_cn << header;
 
+      // some adjacent regions with the same CN are not merged due to breakpoints
       for(auto sg : g->chr_segments){
         for(auto s : sg.second){
           // s->print();
@@ -1912,7 +1913,7 @@ public:
         ofstream fout(fname);
         // fout << g->paths.size() << endl;
         // weird path ID, starting from 1
-        fout << "ID\tshape\ttype\tNcentromere\tnodes\n";
+        fout << "ID\tshape\ttype\tNcentromere\tnodes\tsize\n";
         for(auto p: g->paths){
           g->write_path(p.second, fout);
         }
@@ -2041,6 +2042,51 @@ public:
 
       fout.close();
 
+    }
+
+    void write_merged_cn(string fname_cn){
+      ofstream fout_cn(fname_cn);
+      string header = "chromosome\tstart\tend\ttotal_cn\tcnA\tcnB\n";
+      fout_cn << header;
+      for(auto sg : g->chr_segments){
+        // for each chromosome
+        vector<segment*> sgs = sg.second;
+        segment* prev_sg = sgs[0];
+        // values to print
+        int chr = prev_sg->chr;
+        int start = prev_sg->start;
+        int end = prev_sg->end;
+        int cnA = prev_sg->cnA;
+        int cnB = prev_sg->cnB;
+    
+        for(int i = 1; i < sgs.size(); i++){
+          // s->print();
+          segment* curr_sg = sgs[i];
+          assert(prev_sg->chr == curr_sg->chr);
+          // merge regions
+          if(prev_sg->end == curr_sg->start - 1 && prev_sg->cnA == curr_sg->cnA && prev_sg->cnB == curr_sg->cnB){
+            end = curr_sg->end;  // new end for the consecutive regions
+          }else{
+            // new regions are different, print previous regions
+            int tcn = cnA + cnB;
+            string line = to_string(chr + 1) + "\t" + to_string(start) + "\t" + to_string(end) + "\t" + to_string(tcn) + "\t" + to_string(cnA) + "\t" + to_string(cnB)+ "\n";
+            fout_cn << line; 
+            // start a new record
+            chr = curr_sg->chr;
+            start = curr_sg->start;
+            end = curr_sg->end;
+            cnA = curr_sg->cnA;
+            cnB = curr_sg->cnB;   
+          }
+          prev_sg = curr_sg;
+        }
+
+        // print last region        
+        int tcn = cnA + cnB;
+        string line = to_string(chr + 1) + "\t" + to_string(start) + "\t" + to_string(end) + "\t" + to_string(tcn) + "\t" + to_string(cnA) + "\t" + to_string(cnB)+ "\n";
+        fout_cn << line; 
+      }
+      fout_cn.close();
     }
 
 
