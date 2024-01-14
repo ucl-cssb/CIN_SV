@@ -1,6 +1,7 @@
 #!/usr/bin/env Rscript
 
-# install 
+# This script is used to detect chromothripsis events from simulated data 
+
 # install.packages("devtools")
 # require(devtools)
 # if (!require("BiocManager", quietly = TRUE))
@@ -19,9 +20,9 @@ suppressMessages(library(tidyverse))
 suppressMessages(library(ShatterSeek))
 suppressMessages(library(tools))
 
-
-chr_info = readRDS("/Users/bl0033/Gdrive/git/CIN_SV/data/chr_info.rds")
-chr_info_hg38 = readRDS("/Users/bl0033/Gdrive/git/CIN_SV/data/chr_info_hg38.rds")
+# may need to use the full path
+chr_info = readRDS("data/chr_info.rds")
+chr_info_hg38 = readRDS("data/chr_info_hg38.rds")
 
 
 #' Plot chromothripsis regions, based on ShatterSeek code
@@ -473,15 +474,6 @@ option_list <- list(
 opt_parser <- OptionParser(option_list = option_list)
 opt <- parse_args(opt_parser)
 
-
-# dir <- "d:/data/SV/sim/test20220425-2-checked"
-# cell_ID <- 3
-# div_ID <- 1
-#
-# dir = "d:/data/SV/real/HX13/nDSB25_nUn0.1_frag49/r2"
-# cell_ID = 4
-# div_ID = 2
-# chr = 22
 
 dir <- opt$dir
 fsv <- opt$fsv

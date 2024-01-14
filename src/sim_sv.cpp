@@ -164,7 +164,7 @@ int main(int argc, char const *argv[]){
       ("n_cell,n", po::value<int>(&n_cell)->default_value(2), "size of final population")
       ("div_break", po::value<int>(&div_break)->default_value(0), "maximum ID of cell division when double strand breaks occurs")
       // ("mean_break", po::value<double>(&mean_break)->default_value(-1), "mean value of cell division ID when double strand breaks occurs")
-      ("dsb_rate,r", po::value<double>(&dsb_rate)->default_value(0), "mean number or rate of double strand breaks per cell division assuming gradutual evolution, which follows Poisson distribution")
+      ("dsb_rate,r", po::value<double>(&dsb_rate)->default_value(0), "mean number or rate of double strand breaks per cell division")
       // ("dsb_rate2", po::value<double>(&dsb_rate2)->default_value(0), "mean constant rate of double strand breaks per division in gradutual evolution after a punctuated event")
       // ("min_dsb", po::value<int>(&min_dsb)->default_value(0), "minimal number of double strand breaks (lower bound of uniform distribution of the number of double strand breaks)")
       // ("max_dsb", po::value<int>(&max_dsb)->default_value(40), "maximal number of double strand breaks (upper bound of uniform distribution of the number of double strand breaks)")
@@ -179,7 +179,7 @@ int main(int argc, char const *argv[]){
       ("only_repair_new", po::value<int>(&only_repair_new)->default_value(0), "whether or not to only repair new DSBs introduced in each cell cycle")
       ("circular_prob", po::value<double>(&circular_prob)->default_value(0), "the probability of a frament without centromere and telomeres forming circular DNA (ecDNA)")
       // ("target_chrs", po::value<string>(&target_chrs)->default_value(""), "biased chromosomes to introduce breaks, total number followed by ID of each chromosome")
-      ("fchr_prob", po::value<string>(&fchr_prob)->default_value(""), "the file containing the probability of double strand breaks on each chromosome")
+      ("fchr", po::value<string>(&fchr)->default_value(""), "TSV file with chromosome size infomation")
 
       ("birth_rate,b", po::value<double>(&birth_rate)->default_value(1), "birth rate")
       ("death_rate,d", po::value<double>(&death_rate)->default_value(0), "death rate")
@@ -190,7 +190,7 @@ int main(int argc, char const *argv[]){
     po::options_description optional("Optional parameters");
     optional.add_options()
       // input files which specifies #sampled cells and CNA informaton
-      ("fchr", po::value<string>(&fchr)->default_value(""), "TSV file with chromosome size infomation")
+      ("fchr_prob", po::value<string>(&fchr_prob)->default_value(""), "the file containing the probability of double strand breaks on each chromosome")      
       ("fbin", po::value<string>(&fbin)->default_value(""), "TSV file with bin size infomation, used to get bin-level summary statistics")
       ("fbp", po::value<string>(&fbp)->default_value(""), "TSV file with breakpoints to sample from when introducing new DSBs")
       ("fbp_common", po::value<string>(&fbp_common)->default_value(""), "TSV file with initial breakpoints")
@@ -436,8 +436,8 @@ int main(int argc, char const *argv[]){
       write_stat_bin_cn(s, final_cells, num_loc, verbose);     
     }
     write_stat_bp_freq(s, final_cells, verbose);
-    // add percentage of cells with WGD
-    int nwgd = 0;
+    
+    int nwgd = 0;    // for percentage of cells with WGD
     int total_del = 0;
     int total_dup = 0;
     // int total_h2h = 0; 

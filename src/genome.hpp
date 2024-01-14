@@ -2457,6 +2457,7 @@ void duplicate_path_fusion(path& p, int verbose = 0){
 
 
 // assume adjacencies contain all edges
+// when intervals are at circular DNAs, it may cause breaks on ecDNA or ecDNA strucutre change. 
 void get_unique_interval(int verbose = 0){
   cn_by_chr_hap.clear();
 

@@ -9,9 +9,9 @@ fname = paste0("../data/cytoBand_", hgv, ".txt")
 fout = paste0("../data/", hgv, "_size.tsv")
 
 # convert into "chr length boundary (centromere)"
-ref = read.table(fname, header = F)
-names(ref) <- c("chrom","start","end","cytoband", "stain")
-unique(ref$stain)
+# ref = read.table(fname, header = F)
+# names(ref) <- c("chrom","start","end","cytoband", "stain")
+# unique(ref$stain)
 
 
 get_cyto_band <- function(fcyto){
@@ -113,7 +113,7 @@ ref_size %>% filter(chrom != 'X') %>% filter(chrom != 'Y') %>% arrange(as.numeri
 write_tsv(ref_sel, fout)
 
 
-dir = "d:/data/SV/humcfs_fragile.gff3"
-fs_autosome = get_fragile_sites(dir) 
-fout = "D:/Gdrive/git/CIN_SV/data/fragile_sites.tsv"
-write_tsv(fs_autosome, fout)
+# dir = "data/humcfs_fragile.gff3"
+# fs_autosome = get_fragile_sites(dir) 
+# fout = "data/fragile_sites.tsv"
+# write_tsv(fs_autosome, fout)

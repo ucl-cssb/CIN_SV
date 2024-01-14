@@ -523,7 +523,7 @@ plot_SV <- function(fname, ref = "hg38"){
   sv.first = res$sv.first
   sv.second = res$sv.second
   
-  col <- pa[svs$svclass]
+  col <- sv_color[svs$svclass]
   
   outfile <- str_replace(fname, ".tsv", ".png")
   name <- ""
@@ -538,25 +538,41 @@ plot_SV <- function(fname, ref = "hg38"){
 }
 
 
+plot_CN_normal <- function(cnv, ref = "hg38", size = 5, col = col_fun){
+  cnsel = get_CN(fcnv)
+  cnsel = cnsel %>% mutate(value1 = 1, value2 = 1)   # for normal data
+  
+  outfile <- file.path(dirname(fcnv), "sv_normal.pdf")
+  name <- ""
+  #png(outfile, height=800, width=800)
+  pdf(outfile, height=size, width=size)
+  circos.initializeWithIdeogram(species=ref, chromosome.index = paste0("chr", seq(1:22)), plotType = c("ideogram", "labels"))
+  circos.genomicHeatmap(cnsel, col = col_fun, side = "inside", border = "white")
+  circos.clear()
+  
+  title(name)
+  dev.off() 
+}
+
+
 plot_CN_SV <- function(fsv, fcnv, ref = "hg38", size = 5, col = col_fun, pa = sv_color){
   # get CN data
   cnsel = get_CN(fcnv)
   # cnsel = cnsel %>% mutate(value1 = 1, value2 = 1)   # for normal data
   
+  # get SV data
+  # print(fsv)
+  res = get_SV(fsv)
+  
   # output file
   # outfile <- str_replace(fsv, ".tsv", ".png")
   outfile <- str_replace(fsv, ".tsv", ".pdf")
   name <- ""
-  # jpeg(outfile, height=800, width=800)
+  #png(outfile, height=800, width=800)
   pdf(outfile, height=size, width=size)
-  
-  circos.initializeWithIdeogram(species=ref, chromosome.index = paste0("chr", seq(1:22)))
-
+  circos.initializeWithIdeogram(species=ref, chromosome.index = paste0("chr", seq(1:22)), plotType = c("ideogram", "labels"))
   circos.genomicHeatmap(cnsel, col = col_fun, side = "inside", border = "white")
   
-  # get SV data
-  print(fsv)
-  res = get_SV(fsv)
   # if(!is.na(res)){
   if(length(res) > 0){    
     svs = res$svs 
