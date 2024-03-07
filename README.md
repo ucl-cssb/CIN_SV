@@ -1,7 +1,7 @@
 # Introduction
 This program simulates cell divisions with a stochastic birth-death branching process.
-It generates double strand breaks and repair them in each cell cycle.
-It can output copy number alterations (CNAs) and structural variants (SVs) for all cells in the final population.
+It can generate double strand breaks and repair some or all of them in a complete cell cycle.
+It can output copy number alterations (CNAs) and structural variants (SVs) for all cells in the final population and their summary statistics.
 
 ![The stochastic cell-cycle model](model.jpeg "The stochastic cell-cycle model of SV generation from DNA repair and replication.")
 
@@ -13,21 +13,28 @@ The simulated and real data used for the analysis in the above manuscript are av
 [Zenodo](https://doi.org/10.5281/zenodo.10114638).
 
 
-# Installation
-The program has been tested on *nix systems.
-
-## Required library
+## Required library for the simulation program
 * [GSL](https://www.gnu.org/software/gsl/)
 * [BOOST](https://www.boost.org)
 
+
+# Installation
+The simulation program has been tested on the latest versions of *nix systems, including:
+* macOS Sonoma 14.3.1, GSL 2.7.1, BOOST 1.83.0
+* Red Hat Enterprise Linux Server (Maipo) 7.8, GSL 2.4, BOOST 1.53.0 
+* CentOS Linux (Core) 7, GSL 2.5, BOOST 1.53.0 
+
+
 ## Compilation
 Download the source code and then run `make` in folder "src" to generate the simulation program 'simsv' in a few seconds.
+The simulation program 'simsv' will be stored in a new folder called "bin".
 
 
 # Usage
 Please run `./simsv -h` for all options.
 
-Please run `bash script/run_sv.sh` for an example.
+Please run `bash script/run_sv.sh` for an example, which will generate simulated data with the given parameters in less than one second or a bit longer depending on the system.
+The output will be stored in a new folder called "example".
 
 
 
@@ -74,7 +81,7 @@ Please see scripts in folder "script/abc" for how to run ABC on simulated and re
 ### Visualize output
 The script `visualize_sv.R` provides several visualization functions of the data.
 
-Please see the following scripts in folder "script" for how to generated the plots in the manuscript.
+Please see the following scripts in folder "script" for how to generate the plots in the manuscript.
 * Fig 1: plot_demo_model.R
 * Fig 2: parse_bfb.R, check_cmplxy.R, parse_pcn.R
 * Fig 3: count_sv.R

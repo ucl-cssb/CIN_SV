@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
 
+# parent_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
+# The current path must be the home folder of CIN_SV
+
 if [[ ! -d example ]]; then
   mkdir example
 fi
 
+# the other folders have path relative to this new folder
 cd example
 
 seed=$RANDOM
 
-# change verbose level to get different output
+# Change verbose level to get  output of different levels of details. Larger values (maximum 2) generates more output information
 verbose=0
 
 track_all=0  # not keep track of all cells to save computation
