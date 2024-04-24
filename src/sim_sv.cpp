@@ -11,8 +11,10 @@
 using namespace std;
 
 
-// Simulate structural variations during cell division
+// Simulate structural variations on the genomes during cell division
 
+
+// An auxiliary function to get the bin ID for genomic segments, used to summarize copy number by bins
 void get_bin_number(string fbin, vector<pos_bin>& bins, vector<int>& bin_number, int verbose = 0){
     read_bins(fbin, bins, verbose);
 
@@ -65,6 +67,7 @@ void write_rck_output(vector<Cell_ptr>& final_cells, string outdir, int verbose 
 }
 
 
+// output the summary statistics computed at bin level
 void write_stat_bin_cn(Clone* s, vector<Cell_ptr>& final_cells, int num_loc, int verbose = 0){
     map<int, double> cell_ploidy;
     map<int, vector<double>> loc_cn;
@@ -91,6 +94,7 @@ void write_stat_bin_cn(Clone* s, vector<Cell_ptr>& final_cells, int num_loc, int
 }
 
 
+// output the summary statistics regarding the frequency distribution of breakpoints
 void write_stat_bp_freq(Clone* s, vector<Cell_ptr>& final_cells, int verbose = 0){
     // get number of new breakpoints locations of all current cells
     map<int, int> bp_freq;  // bp count: 1 to ncell, bp frequency

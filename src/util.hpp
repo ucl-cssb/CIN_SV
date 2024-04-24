@@ -29,18 +29,114 @@
 
 using namespace std;
 
+/************** custom data structures to simplify data representation **************/
 
 typedef map<pair<int, int>, int> pcn;   // copy number at a position
 typedef map<pair<int, int>, double> dpcn;   // copy number at a position
 
 
-// A genomic position
+// An interval between two breakpoints
+struct bp_interval{
+  int bp;
+  int chr;
+  int haplotype;
+  int left_jid;
+  int right_jid;
+  bool is_inverted;  // the traverse direction is from end to start
+};
+
+
+
+struct pos_hap{
+  int chr;
+  int haplotype;
+  int loc;
+  int side;   
+
+  bool operator<(pos_hap const &other) const {
+    return (chr < other.chr ||
+      (chr == other.chr && loc < other.loc) ||      
+      (chr == other.chr && loc == other.loc && haplotype < other.haplotype)||      
+      (chr == other.chr && loc == other.loc && haplotype == other.haplotype && side < other.side));
+  }
+};
+
+
+struct pos_cn{
+  int chr;
+  int start;
+  int end;
+  int cnA;
+  int cnB;
+};
+
+
+struct adj_pos{
+  int chr1;
+  int pos1;
+  int strand1;
+  int chr2;
+  int pos2;
+  int strand2;
+  string type;
+
+  bool operator<(adj_pos const &other) const {
+    return (chr1 < other.chr1 ||
+      (chr1 == other.chr1 && pos1 < other.pos1));
+  }
+
+};
+
+
+struct adj_cn{
+  // string aid;    // assign id when printing
+  int cnAA;
+  int cnAB;
+  int cnBA;
+  int cnBB;
+};
+
+
+// A genomic region on a certain haplotype of a chromosome, excluding chromosome information
+struct interval{
+  int start;
+  int end;
+  int cn;
+  int jid_start;  // keep breakpoint ID for tracking
+  int jid_end;
+
+  bool operator<(interval const &other) const {
+    return (start < other.start ||
+      (start == other.start && end < other.end));
+  }
+};
+
+
+// A haplotype-specific genomic region
+struct haplotype_pos{
+  int chr;
+  int haplotype;
+  int start;
+  int end;
+  int jid_start;  // keep breakpoint ID for tracking
+  int jid_end;
+
+  bool operator<(haplotype_pos const &other) const {
+    return (chr < other.chr ||
+    (chr == other.chr && haplotype < other.haplotype) ||
+    (chr == other.chr && haplotype == other.haplotype && start < other.start) ||
+    (chr == other.chr && haplotype == other.haplotype && start == other.start && end < other.end));
+  }
+};
+
+// A genomic region/bin
 struct pos_bin{
   int chr;
   int start;
   int end;  
 };
 
+// A breakpoint
 struct pos_bp{
   int chr;
   int loc;
@@ -53,7 +149,7 @@ struct pos_bp{
 };
 
 
-
+// A SV adjacency
 struct pos_sv{
   int chr1;
   int loc1;
@@ -63,17 +159,34 @@ struct pos_sv{
   int side2;    
 };
 
+// DEL: +/-, DUP: -/+, same orientation as DELREAL/DUPREAL, but copy number may not change
+enum SV_type{NONE, DEL, DUP, H2HINV, T2TINV, BND, DELREAL, DUPREAL}; // only for variant adjacency, BND: intra-chromosomal
+
+enum SStat_type{ALL};
+
+enum Growth_type{ONLY_BIRTH, CHANGE_BIRTH, CHANGE_DEATH, CHANGE_BOTH};
+
+enum Telo_type{NONTEL, PTEL, QTEL, COMPLETE};
+enum Adj_type{INTERVAL, REF, VAR};   // 0: interval, 1: reference, 2: variant
+enum Junc_type{HEAD, TAIL};  // 0: +, 1: -
+
+
+
+/************ global constants and variables ************/
 
 const int FAIL = 1;
 
+// global constant on the number of chromosomes and ploidy (human genome)
 const int NUM_CHR = 22;
 const int NORM_PLOIDY = 2;
 // const int NUM_LOC = 5000;
+
 const int BIN_SIZE = 500000;    // used in ploidy computation
+
 const int MAX_NUM_WGD = 1; 
 
-const double MIN_FITNESS = -0.999999;
 
+// the positions of arm boundary, centromere, telomere (human genome)
 vector<int> CHR_LENGTHS;
 vector<int> ARM_BOUNDS;
 vector<int> CENT_STARTS;
@@ -88,25 +201,20 @@ vector<double> CHR_PROBS_vec(NUM_CHR, 1.0 / NUM_CHR);
 double* CHR_PROBS = &CHR_PROBS_vec[0];
 
 const int NUM_SVTYPE = 8;
-// DEL: +/-, DUP: -/+, same orientation as DELREAL/DUPREAL, but copy number may not change
-enum SV_type{NONE, DEL, DUP, H2HINV, T2TINV, BND, DELREAL, DUPREAL}; // only for variant adjacency, BND: intra-chromosomal
 
-enum SStat_type{ALL};
-
-enum Growth_type{ONLY_BIRTH, CHANGE_BIRTH, CHANGE_DEATH, CHANGE_BOTH};
-
-enum Telo_type{NONTEL, PTEL, QTEL, COMPLETE};
-enum Adj_type{INTERVAL, REF, VAR};   // 0: interval, 1: reference, 2: variant
-enum Junc_type{HEAD, TAIL};  // 0: +, 1: -
-
-
+// number of columns in the input file containing known breakpoints 
 const int NCOL_BP_FILE = 6;  // some intput may not have frequency 
 
-const double PROB_INTER = 1e-9;
-const double PROB_SELF = 1e-12;
 
+const double PROB_INTER = 1e-9;   // probabilities of connecting two breakpoints at different chromosomes
+const double PROB_SELF = 1e-12;  // probabilities of connecting the  breakpoint to itself
+
+
+// cell survival probablity based on known chromosome and arm scores (human genome)
 const double SURVIVAL_D = 0.00039047;
 const double SURVIVAL_C = -0.036132164;
+
+const double MIN_FITNESS = -0.999999;
 
 // Chromosome and arm scores, taken from Davoli et al. Table S6A, opposite sign
 const double CHR_SCORE[] = {-0.143640496, 0.638322635, 0.597508197, 0.106407616, -0.785208831, -0.664148445, 3.039521587, 1.650903175, 0.765873656, -1.23443224, 0.210103365,
@@ -190,6 +298,9 @@ const double ARM_SCORE2[] = {0.181435341,
 
 
 gsl_rng * r;
+
+
+/************ utility functions ************/
 
 unsigned long setup_rng(unsigned long set_seed){
   gsl_rng_env_setup();
@@ -296,14 +407,72 @@ T get_mode(std::vector<T> vec) {
 }
 
 
-void set_outdir(string outdir, int verbose = 0){
-    const char* path = outdir.c_str();
-    boost::filesystem::path dir(path);
-    if(boost::filesystem::create_directory(dir)){
-        if(verbose > 0) cerr << "Directory Created: " << outdir <<endl;
+
+// Run length encoding a vector, find the size of the longest region with value x
+int find_max_size(int x, const vector<int>& vec){
+  int len = vec.size();
+  vector<int> rle_vec_val;
+  vector<int> rle_vec_len;
+
+  for(int i = 0; i < len; i++){
+    int count = 1;
+    while(vec[i] == vec[i+1] && i < len - 1){
+      count++;
+      i++;
     }
+    rle_vec_val.push_back(vec[i]);
+    rle_vec_len.push_back(count);
+  }
+
+  bool zeros = std::all_of(vec.begin(), vec.end(), [](int i) { return i == 0; });
+
+  if(zeros){
+    return 0;
+  }else{
+    vector<int> x_lens;
+    for(int i = 0; i < rle_vec_val.size(); i++){
+      if(rle_vec_val[i] == x){
+        x_lens.push_back(rle_vec_len[i]);
+      }      
+    }
+
+    int max = *max_element(x_lens.begin(), x_lens.end());
+
+    return max;
+  }  
 }
 
+
+// from https://chat.openai.com/
+template <typename T>
+void insert_sorted_vec(std::vector<T>& vec, const T& value) {
+    typename std::vector<T>::iterator it = vec.begin();
+    while (it != vec.end() && value > *it) {
+        ++it;
+    }
+    vec.insert(it, value);
+}
+
+
+
+// finds the two values adjacent to a target value in a sorted vector
+// must be in the middle of the vector, as the breakpoint is always between the two endpoints
+// from https://chat.openai.com/
+template <typename T>
+std::pair<T, T> find_adjacent_values(const std::vector<T>& vec, const T& target) {
+    typename std::vector<T>::const_iterator it = std::lower_bound(vec.begin(), vec.end(), target);
+    
+    assert(it != vec.end() && it != vec.begin());
+
+    // Target value is between two elements in the vector
+    T lower = *(it - 1);
+    T upper = *(it + 1);
+    
+    return std::make_pair(lower, upper);
+}
+
+
+/******************* function related to reading input ******************/
 
 // Read strings separated by space into a vector.
 // num: the number of element in the string. If not given, assume it is the first number in the string
@@ -631,31 +800,15 @@ vector<pos_sv> get_common_sv_from_file(const string& filename, int verbose = 0){
 }
 
 
-// from https://chat.openai.com/
-template <typename T>
-void insert_sorted_vec(std::vector<T>& vec, const T& value) {
-    typename std::vector<T>::iterator it = vec.begin();
-    while (it != vec.end() && value > *it) {
-        ++it;
+
+/********************* function related to output ******************/
+
+void set_outdir(string outdir, int verbose = 0){
+    const char* path = outdir.c_str();
+    boost::filesystem::path dir(path);
+    if(boost::filesystem::create_directory(dir)){
+        if(verbose > 0) cerr << "Directory Created: " << outdir <<endl;
     }
-    vec.insert(it, value);
-}
-
-
-// finds the two values adjacent to a target value in a sorted vector
-// must be in the middle of the vector, as the breakpoint is always between the two endpoints
-// from https://chat.openai.com/
-template <typename T>
-std::pair<T, T> find_adjacent_values(const std::vector<T>& vec, const T& target) {
-    typename std::vector<T>::const_iterator it = std::lower_bound(vec.begin(), vec.end(), target);
-    
-    assert(it != vec.end() && it != vec.begin());
-
-    // Target value is between two elements in the vector
-    T lower = *(it - 1);
-    T upper = *(it + 1);
-    
-    return std::make_pair(lower, upper);
 }
 
 
@@ -719,40 +872,7 @@ string get_sv_type_string(int type){
 
 
 
-// Run length encoding a vector, find the size of the longest region with value x
-int find_max_size(int x, const vector<int>& vec){
-  int len = vec.size();
-  vector<int> rle_vec_val;
-  vector<int> rle_vec_len;
-
-  for(int i = 0; i < len; i++){
-    int count = 1;
-    while(vec[i] == vec[i+1] && i < len - 1){
-      count++;
-      i++;
-    }
-    rle_vec_val.push_back(vec[i]);
-    rle_vec_len.push_back(count);
-  }
-
-  bool zeros = std::all_of(vec.begin(), vec.end(), [](int i) { return i == 0; });
-
-  if(zeros){
-    return 0;
-  }else{
-    vector<int> x_lens;
-    for(int i = 0; i < rle_vec_val.size(); i++){
-      if(rle_vec_val[i] == x){
-        x_lens.push_back(rle_vec_len[i]);
-      }      
-    }
-
-    int max = *max_element(x_lens.begin(), x_lens.end());
-
-    return max;
-  }  
-}
-
+  /**************** functions related to cell fitness  ****************/
 
   // get survival probability of normal cell (compute once)
   double get_surv_prob_normal_chr(double selection_strength){

@@ -15,84 +15,13 @@
 #include <boost/algorithm/string.hpp>
 
 // #include "util.hpp"
+
+#include "mutation.hpp"
 #include "genome.hpp"
 
 
 using namespace std;
 
-struct bp_interval{
-  int bp;
-  int chr;
-  int haplotype;
-  int left_jid;
-  int right_jid;
-  bool is_inverted;  // the traverse direction is from end to start
-};
-
-
-class Mutation{
-public:
-    int mut_ID;
-
-    int type;   // Mutation type. 0: SNV 1: CNV
-    double time_occur;
-
-    int cell_ID;
-    int chr;  // chromosome on which the mutation occurs
-    int arm;    // 0: no informaton, 1: p; 2: q
-    int reciprocal;
-
-    int start;  // start position
-    int end;    // end position
-    int size;
-
-    int number;  // copy of this mutation
-
-    ~Mutation() = default;
-    Mutation(const Mutation& other) = default;
-    Mutation(Mutation&& other) = default;
-    Mutation& operator=(const Mutation& other) = default;
-    Mutation& operator=(Mutation&& other) = default;
-
-    Mutation(){
-        mut_ID = 0;
-        time_occur = 0;
-        number = 1;
-    }
-
-
-    Mutation(int mut_ID, double time_occur){
-        this->mut_ID = mut_ID;
-        this->time_occur = time_occur;
-        this->number = 1;
-    }
-
-    Mutation(int mut_ID, double time_occur, int chr, int arm, int type, int reciprocal){
-        this->mut_ID = mut_ID;
-        this->time_occur = time_occur;
-
-        this->chr = chr;
-        this->arm = arm;
-        this->type = type;
-        this->reciprocal = reciprocal;
-
-        this->number = 1;
-    }
-
-    Mutation(int mut_ID, double time_occur, int chr, int start, int end, int arm, int type, int reciprocal){
-        this->mut_ID = mut_ID;
-        this->time_occur = time_occur;
-
-        this->chr = chr;
-        this->start = start;
-        this->end = end;
-        this->arm = arm;
-        this->type = type;
-        this->reciprocal = reciprocal;
-
-        this->number = 1;
-    }
-};
 
 class Cell;
 
@@ -119,6 +48,7 @@ public:
     // chr-level and arm-level CNs for computing fitness values
     vector<double> chr_tcns;
     vector<double> arm_tcns;
+
     double surv_prob;   // survival probability
     double fitness;   // selection coefficient as in the classic definition
 
@@ -275,8 +205,9 @@ public:
         // genome information will be recomputed later
     }
 
-    /*********************** functions related to mutation generations **************************/
-    // pass a path and related objects to both daughter cells, assuming correct implicit copy, decrpetated after explicit copy
+    /*********************** functions related to distributing the chromosomes to daughter cells **************************/
+
+    // pass a path and related objects to both daughter cells, assuming correct implicit copy, deprecated as the explicit copy is used
     void inherit_path_both(path* p, Cell_ptr dcell1, Cell_ptr dcell2){
       path* p1 = new path(*p);
       p1->cell_ID = dcell1->cell_ID;
@@ -398,7 +329,9 @@ public:
     }
 
 
-    // called when splitting complex paths
+    /*********** functions related to breaking a complex paths ****************/
+
+    // An auxiliary function called by segregate_polycentric when splitting complex paths to break an circle
     void break_circle(path* p2split, int verbose = 0){
         int nnode = p2split->nodes.size();
         breakpoint* js = g->breakpoints[p2split->nodes[0]];
@@ -477,6 +410,7 @@ public:
     }
 
 
+    // An auxiliary function called by find_breakpoint_in_interval to pick up an interval on the left for breakpoint introduction when splitting a segment with multiple centromeres
     void get_left_interval(adjacency* adj, int& ps, int& pe, int& chr, int verbose = 0){
         int jid1 = adj->junc_id1;
         int jid2 = adj->junc_id2;
@@ -511,7 +445,7 @@ public:
         }
     }
 
-
+    // an auxiliary function called by find_breakpoint_in_interval to pick up an interval on the right for breakpoint introduction when splitting a segment with multiple centromeres
     void get_right_interval(adjacency* adj, int& ps, int& pe, int& chr, int verbose = 0){
         int jid1 = adj->junc_id1;
         int jid2 = adj->junc_id2;
@@ -546,10 +480,12 @@ public:
         }      
     }
 
-    // randombly choose an interval to introduce the break
-    // when breaking paths with multiple centromeres, a breakpoint must be to the other side of another breakpoint
-    // For each adjacent interval, breakpoint is either at right of 1st interval or left of 2nd interval when finding all breakpoints before splitting intervals
-    // Here, left and right should be based on the direction of the interval on the path, so need to check inversion
+    /*
+    This function randomly chooses an interval to introduce an breakpoint when splitting a segment with multiple centromeres, called by segregate_polycentric.
+    When breaking paths with multiple centromeres, a breakpoint must be at the other side of another breakpoint relative to the location of the centromere.
+    For each adjacent interval, the breakpoint is either at the right of the first interval or the left of the second interval when localizing all breakpoints before splitting intervals.
+    Here, left and right should be based on the direction of the interval on the path, so need to check inversion
+    */
     void find_breakpoint_in_interval(const vector<pair<int, int>>& adjID_pair_withcent, vector<bp_interval>& bps_in_interval, int verbose = 0){
       int chr = -1;
       int haplotype = -1;
@@ -569,7 +505,7 @@ public:
           adj = g->adjacencies[pair.second];   // should not be ptel
           get_left_interval(adj, ps, pe, chr, verbose);
         }else{ // break on right side of first interval
-          // should not be qtel
+          // should not be Q telomere
           get_right_interval(adj, ps, pe, chr, verbose);
         }
 
@@ -649,8 +585,8 @@ public:
     }
 
 
-    // construct a new path starting from a specific breakpoint
-    // called by fragment_path, split_path_from_bp, segregate_polycentric
+    // This function constructs a new path starting from a specific breakpoint.
+    // It is called by fragment_path, split_path_from_bp, segregate_polycentric
     void get_path_from_bp(path* p, breakpoint* js, double frac_unrepaired, double circular_prob, int verbose = 0) {
         js->path_ID = p->id;
         p->nodes.push_back(js->id);
@@ -699,7 +635,7 @@ public:
     }
 
  
-    // break an edge by adding new breakpoints
+    // An auxiliary function that break an edge by adding new breakpoints during local fragmentation, called by path_local_fragmentation
     bool break_edge(path* p, adjacency* e, vector<breakpoint*>& new_bps, bool is_inverted, int& bcount, int& ntrial, int& nfail, int& nbreak_succ, int& jid, int& aid, int eid, int nbreak, int verbose = 0){
     // double u2 = runiform(r, 0, 1);
     // if(u2 < 0.5){  // break this edge
@@ -1025,7 +961,9 @@ public:
     }
 
 
-    // introduce DSB and repair breaks (adding variant adjacencies)
+    /*********************** functions related to phases in cell divisions **************************/
+
+    // introduce DSB and repair breaks (adding variant adjacencies)    
     void g1(vector<pos_bp>& bps, vector<double>& bp_fracs, double frac_unrepaired, double circular_prob, int pair_type = 0, double prob_correct_repaired = 0, int verbose = 0){
       // verbose = 1;
       if(verbose > 0) cout << "\nIntroducing " << n_dsb << " DSBs" << endl;
@@ -1152,7 +1090,7 @@ public:
       }
     }
 
-
+    // An auxiliary function called in mitosis 
     void duplicate_genome(Cell_ptr dcell1){
         dcell1->g->paths = g->paths;
         dcell1->g->breakpoints = g->breakpoints;
@@ -1272,105 +1210,65 @@ public:
     }
 
 
-    // taking the most common copy number state, need to compute CNs for each bin or segment, slow for many simulations
-    // many be needed when there are lots of DSBs leading to many complex paths and unbalanced distribution
-    void set_ploidy_by_CN(int bin_level_sumstat, int verbose = 0){
-      if(verbose > 1) cout << "compute ploidy\n";
-      vector<int> tcns;
-
-      if(bin_level_sumstat){
-        for(int i = 0; i < g->bin_tcn.size(); i++){
-          int tcn = round(g->bin_tcn[i]);
-          tcns.push_back(tcn);  
-        }
-      }else{
-        // should consider size of CNAs when using segments
-        for(int chr = 0; chr < NUM_CHR; chr++){
-          for(auto s : g->chr_segments[chr]){
-            int tcn = s->cnA + s->cnB;
-            // split tcn by potential number of bins 
-            int size = s->end - s->start + 1;
-            int nbin = size / BIN_SIZE;
-            for(int i = 0; i < nbin; i++){
-              tcns.push_back(tcn); 
-            }                    
-          }
-        }
-      }
-
-      // double sum_cn = accumulate(tcns.begin(), tcns.end(), 0.0);
-      // ploidy = sum_cn / tcns.size();
-      ploidy = get_mode(tcns);
-    }
-
-    // assume segments have been generated
-    // count number of oscillating CNs by chromosome
-    void get_oscillating_CN(int verbose = 0){  
-      if(verbose > 1) cout << "count number of oscillating CNs by chromosome\n";     
-      for(int chr = 0; chr < NUM_CHR; chr++){
-        vector<int> tcns;
-        vector<int> tdiff;
-        int nseg = g->chr_segments[chr].size();
-        if(verbose > 1) cout << chr << "\t" << nseg << endl;
-        if(nseg == 0){
-          chr_n_osc2[chr] = 0;
-          chr_n_osc3[chr] = 0;
-          continue;
-        }
-        if(nseg == 1){
-          chr_n_osc2[chr] = 1;
-          chr_n_osc3[chr] = 1;
-          continue;
-        }
-        vector<int> v3_states(nseg, 0);
-        vector<int> v2_states(nseg, 0);
-
-        for(auto s : g->chr_segments[chr]){
-          // s->print();
-          int tcn = s->cnA + s->cnB;
-          tcns.push_back(tcn);
-        }
-
-        for(int i = 0; i < nseg - 2; i++){
-          int dcn = tcns[i] - tcns[i + 2];
-          if(dcn == 0){
-            v3_states[i] = 1;
-            v2_states[i] = 1;
-          }else if(abs(dcn) == 1){
-            v3_states[i] = 1;
-          }else{
-
-          }
-          if(verbose > 1) cout << dcn << "\t" << v2_states[i] << "\t" << v3_states[i] << endl;
-        }
-
-        int n_osc2 = find_max_size(1, v2_states) + 2;
-        int n_osc3 = find_max_size(1, v3_states) + 2;
-        chr_n_osc2[chr] = n_osc2;
-        chr_n_osc3[chr] = n_osc3;
-      }
-
-    }
-
-
-   bool is_copy_changed(int chr, int start, int end, const vector<pos_cn>& dups, int verbose = 0){
-    for(auto d : dups){
+    // perform a whole cycle of cell division
+    // duplication and repair of its genome
+    // Path IDs are reencoded in the next cell cylce
+    void do_cell_cycle(Cell_ptr dcell1, Cell_ptr dcell2, vector<pos_bp>& bps, vector<double>& bp_fracs, double frac_unrepaired, int& n_telo_fusion, int& n_complex_path, int& n_path_break, double n_local_frag, double frac_unrepaired_local, double circular_prob, int pair_type = 0, double prob_correct_repaired = 0, int verbose = 0){
+      // verbose = 2;
+      // introduces DSBs into the genome prior to G1 repairs
       if(verbose > 1){
-        cout << d.chr + 1 << "\t" << d.start << "\t" << d.end << "\t" << d.cnA << "\t" << d.cnB << endl;
+        cout << "Original genome: " << endl;
+        g->print();
       }
-      if(d.chr != chr){
-        continue;
-      }else{  // on the same chromosome
-        if(start >= d.start && end <= d.end){
-            return true;
-        } 
+
+      if(verbose > 0) cout << "\nG1 phase" << endl;
+
+      if(dsb_rate > 0){  // different for each cycle
+        n_dsb = gsl_ran_poisson(r, dsb_rate);
+      }  
+      // DSB rate also applies for puncpunctuated events 
+      if(div_occur > div_break){
+        if(verbose > 1) cout << "No new breaks in division " << div_occur << " in cell " << cell_ID << endl;
+        n_dsb = 0;
+        // n_local_frag = 0;
+      }
+
+      g1(bps, bp_fracs, frac_unrepaired, circular_prob, pair_type, prob_correct_repaired, verbose);
+
+      if(verbose > 0) cout << "\nSphase and G2" << endl;
+      sphase_g2(n_telo_fusion, verbose);
+
+      if(verbose > 0) cout << "\nMitosis phase" << endl;
+      mitosis(dcell1, dcell2, n_complex_path, n_path_break, n_local_frag, frac_unrepaired_local, circular_prob, verbose);
+
+      if(verbose > 2){
+        cout << "\nnumber of DSBs in G1: " << n_dsb << endl;
+        this->print_bp_adj();
+        dcell1->print_bp_adj();
+        dcell2->print_bp_adj();
+        cout << g->paths.size() << "\t" << dcell1->g->paths.size() << "\t" << dcell2->g->paths.size() << endl;
+        print_paths();
+        dcell1->print_paths();
+        dcell2->print_paths();        
+      }
+
+      if(verbose > 0){
+        cout << "\nOne cell cycle finish!\n";
+        cout << "\nUnrepaired DSBs in this cycle\n";
+        for(auto jm : g->breakpoints){
+          breakpoint* j = jm.second;
+          if(!j->is_repaired){   // breakpoints from previous cycles may not be repaired
+            j->print();
+          }
+        }
       }
     }
 
-    return false;
-   }
 
 
+    /***********************************  functions related to cell fitness  ***********************************/
+
+    // An auxiliary function to get chromosome-level copy number, used to compute cell fitness, called by get_surv_prob 
     // get average total CN for each chromosome, scaled by segment size
     void get_chr_tcn(int verbose = 0){
         chr_tcns.clear();
@@ -1413,6 +1311,7 @@ public:
     }
 
 
+    // An auxiliary function to get arm-level copy number, used to compute cell fitness, called by get_surv_prob 
     // need to determine arm boundary
     void get_arm_tcn(int verbose = 0){
         arm_tcns.clear();
@@ -1476,7 +1375,7 @@ public:
     }
 
 
-    // according to the formula in Laughney et al, 2015
+    // computing the survival probability of a cell according to the formula in Laughney et al, 2015
     void get_surv_prob(int selection_type, double selection_strength, int verbose){     
       double score = 0.0;
       if(selection_type == 0){
@@ -1500,6 +1399,90 @@ public:
       surv_prob = pow(surv_prob,  selection_strength);
       if(verbose > 1) cout << "computing survival probability of cell " << cell_ID << " with selection type " << selection_type << " and original score " << score << endl;
     }
+
+
+    /***********************************  functions related to obtaining summary statistics  ***********************************/
+
+    // This function aims to compute the ploidy of the genome according to coy numbers, deprecated for now due to inefficiency
+    // taking the most common copy number state, need to compute CNs for each bin or segment, slow for many simulations
+    // may be needed when there are lots of DSBs leading to many complex paths and unbalanced distribution and strong aneuploidy
+    void set_ploidy_by_CN(int bin_level_sumstat, int verbose = 0){
+      if(verbose > 1) cout << "compute ploidy\n";
+      vector<int> tcns;
+
+      if(bin_level_sumstat){
+        for(int i = 0; i < g->bin_tcn.size(); i++){
+          int tcn = round(g->bin_tcn[i]);
+          tcns.push_back(tcn);  
+        }
+      }else{
+        // should consider size of CNAs when using segments
+        for(int chr = 0; chr < NUM_CHR; chr++){
+          for(auto s : g->chr_segments[chr]){
+            int tcn = s->cnA + s->cnB;
+            // split tcn by potential number of bins 
+            int size = s->end - s->start + 1;
+            int nbin = size / BIN_SIZE;
+            for(int i = 0; i < nbin; i++){
+              tcns.push_back(tcn); 
+            }                    
+          }
+        }
+      }
+      
+      // double sum_cn = accumulate(tcns.begin(), tcns.end(), 0.0);
+      // ploidy = sum_cn / tcns.size();
+      ploidy = get_mode(tcns);
+    }
+
+    // An auxiliary function to count number of oscillating CNs by chromosome, called by get_summary_stats
+    // assume segments have been generated
+    void get_oscillating_CN(int verbose = 0){  
+      if(verbose > 1) cout << "count number of oscillating CNs by chromosome\n";     
+      for(int chr = 0; chr < NUM_CHR; chr++){
+        vector<int> tcns;
+        vector<int> tdiff;
+        int nseg = g->chr_segments[chr].size();
+        if(verbose > 1) cout << chr << "\t" << nseg << endl;
+        if(nseg == 0){
+          chr_n_osc2[chr] = 0;
+          chr_n_osc3[chr] = 0;
+          continue;
+        }
+        if(nseg == 1){
+          chr_n_osc2[chr] = 1;
+          chr_n_osc3[chr] = 1;
+          continue;
+        }
+        vector<int> v3_states(nseg, 0);
+        vector<int> v2_states(nseg, 0);
+
+        for(auto s : g->chr_segments[chr]){
+          // s->print();
+          int tcn = s->cnA + s->cnB;
+          tcns.push_back(tcn);
+        }
+
+        for(int i = 0; i < nseg - 2; i++){
+          int dcn = tcns[i] - tcns[i + 2];
+          if(dcn == 0){
+            v3_states[i] = 1;
+            v2_states[i] = 1;
+          }else if(abs(dcn) == 1){
+            v3_states[i] = 1;
+          }else{
+
+          }
+          if(verbose > 1) cout << dcn << "\t" << v2_states[i] << "\t" << v3_states[i] << endl;
+        }
+
+        int n_osc2 = find_max_size(1, v2_states) + 2;
+        int n_osc3 = find_max_size(1, v3_states) + 2;
+        chr_n_osc2[chr] = n_osc2;
+        chr_n_osc3[chr] = n_osc3;
+      }
+    }
+
 
     // summary for the whole genome of each cell, computed from the set of adjacencies
     void get_summary_stats(int verbose = 0){
@@ -1664,62 +1647,7 @@ public:
     }
 
 
-    // a whole cycle of cell division
-    // duplication and repair of its genome
-    // Path IDs are reencoded in the next cell cylce
-    void do_cell_cycle(Cell_ptr dcell1, Cell_ptr dcell2, vector<pos_bp>& bps, vector<double>& bp_fracs, double frac_unrepaired, int& n_telo_fusion, int& n_complex_path, int& n_path_break, double n_local_frag, double frac_unrepaired_local, double circular_prob, int pair_type = 0, double prob_correct_repaired = 0, int verbose = 0){
-      // verbose = 2;
-      // introduces DSBs into the genome prior to G1 repairs
-      if(verbose > 1){
-        cout << "Original genome: " << endl;
-        g->print();
-      }
-
-      if(verbose > 0) cout << "\nG1 phase" << endl;
-
-      if(dsb_rate > 0){  // different for each cycle
-        n_dsb = gsl_ran_poisson(r, dsb_rate);
-      }  
-      // DSB rate also applies for puncpunctuated events 
-      if(div_occur > div_break){
-        if(verbose > 1) cout << "No new breaks in division " << div_occur << " in cell " << cell_ID << endl;
-        n_dsb = 0;
-        // n_local_frag = 0;
-      }
-
-      g1(bps, bp_fracs, frac_unrepaired, circular_prob, pair_type, prob_correct_repaired, verbose);
-
-      if(verbose > 0) cout << "\nSphase and G2" << endl;
-      sphase_g2(n_telo_fusion, verbose);
-
-      if(verbose > 0) cout << "\nMitosis phase" << endl;
-      mitosis(dcell1, dcell2, n_complex_path, n_path_break, n_local_frag, frac_unrepaired_local, circular_prob, verbose);
-
-      if(verbose > 2){
-        cout << "\nnumber of DSBs in G1: " << n_dsb << endl;
-        this->print_bp_adj();
-        dcell1->print_bp_adj();
-        dcell2->print_bp_adj();
-        cout << g->paths.size() << "\t" << dcell1->g->paths.size() << "\t" << dcell2->g->paths.size() << endl;
-        print_paths();
-        dcell1->print_paths();
-        dcell2->print_paths();        
-      }
-
-      if(verbose > 0){
-        cout << "\nOne cell cycle finish!\n";
-        cout << "\nUnrepaired DSBs in this cycle\n";
-        for(auto jm : g->breakpoints){
-          breakpoint* j = jm.second;
-          if(!j->is_repaired){   // breakpoints from previous cycles may not be repaired
-            j->print();
-          }
-        }
-      }
-    }
-
-
-    /***********************************  below are functions related to output  ***********************************/
+    /***********************************  functions related to output  ***********************************/
 
     // Follow format of RCK output
     // CN: "chr", "start", "end", "extra"
@@ -2146,6 +2074,28 @@ public:
         cout << "\t number of unrepaired breaks " << this->n_unrepaired << endl;
         cout << "\t number of unique breakpoints " << this->bp_unique.size() << endl;
     }
+
+
+
+
+
+  //  bool is_copy_changed(int chr, int start, int end, const vector<pos_cn>& dups, int verbose = 0){
+  //   for(auto d : dups){
+  //     if(verbose > 1){
+  //       cout << d.chr + 1 << "\t" << d.start << "\t" << d.end << "\t" << d.cnA << "\t" << d.cnB << endl;
+  //     }
+  //     if(d.chr != chr){
+  //       continue;
+  //     }else{  // on the same chromosome
+  //       if(start >= d.start && end <= d.end){
+  //           return true;
+  //       } 
+  //     }
+  //   }
+
+  //   return false;
+  //  }
+  
 
 };
 
