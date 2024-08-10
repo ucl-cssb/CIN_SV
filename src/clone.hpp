@@ -483,14 +483,17 @@ public:
 
                  if(dcell1->surv_prob == -1 || dcell1->g->paths.size() == 0){
                     if(verbose > 1) cout << "delete cell " << dcell1->cell_ID << " with survival probability " << dcell1->surv_prob << " and " << dcell1->g->paths.size() << " paths " << endl;
-                    delete dcell1;
+                    // delete dcell1;
+                    // need tracking to get a complete cell lineage
+                    if(track_all) this->cells.push_back(dcell1);
                  }else{                   
                     this->curr_cells.push_back(dcell1);
                     if(track_all) this->cells.push_back(dcell1);   // to avoid issues in deleting pointers
                  }
                  if(dcell2->surv_prob == -1 || dcell2->g->paths.size() == 0){
                     if(verbose > 1) cout << "delete cell " << dcell2->cell_ID << " with survival probability " << dcell2->surv_prob << " and " << dcell2->g->paths.size() << " paths " << endl;                    
-                    delete dcell2;                   
+                    // delete dcell2;    
+                    if(track_all) this->cells.push_back(dcell2);               
                  }else{
                     this->curr_cells.push_back(dcell2);
                     if(track_all) this->cells.push_back(dcell2);
@@ -655,11 +658,11 @@ public:
         int n_cell = cells.size();
         if(verbose > 0) cout << "Printing " << n_cell << " cells" << endl;
 
-        fout << "cell_ID\tparent_ID\n";
+        fout << "cell_ID\tparent_ID\tnum_fragmentation\tnum_paths\tploidy\n";
         for(unsigned int i = 0; i < n_cell; i++) {
             Cell_ptr cell = cells[i];
             if(cell->parent_ID == 0) continue;
-            fout << cell->cell_ID << "\t" << cell->parent_ID << endl;
+            fout << cell->cell_ID << "\t" << cell->parent_ID << "\t" << cell->num_fragmentation  << "\t" << cell->g->paths.size() << "\t" << cell->ploidy<< endl;
         }
     }
 

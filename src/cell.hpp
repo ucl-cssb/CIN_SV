@@ -58,6 +58,8 @@ public:
     int n_dsb;    // number of double strand breaks during cell division, use exact number for external control over each cell
     int n_unrepaired; // number of unrepaired double strand breaks
 
+    int num_fragmentation; // the number of local fragmentation for current cell (maybe >1 if there are a few complex paths), suggest the presence of chromothripsis events
+
     int n_bp;  // each breakpoint may have at most two connections
     int n_del;
     int n_dup;
@@ -115,6 +117,8 @@ public:
         n_circle = 0;  
         n_ecdna = 0;
         n_nocentro = 0;
+
+        num_fragmentation = 0;
     }         
 
 
@@ -137,7 +141,9 @@ public:
         this->n_tra = 0;
         this->n_circle = 0; 
         this->n_ecdna = 0;     
-        this->n_nocentro = 0;   
+        this->n_nocentro = 0;  
+
+        this->num_fragmentation = 0; 
     }
 
 
@@ -171,7 +177,9 @@ public:
         this->n_tra = 0;
         this->n_circle = 0; 
         this->n_ecdna = 0; 
-        this->n_nocentro = 0;              
+        this->n_nocentro = 0;    
+
+        this->num_fragmentation = 0;           
     }
 
 
@@ -202,6 +210,7 @@ public:
         this->n_dsb = ncell.n_dsb;
         this->n_unrepaired = ncell.n_unrepaired;
 
+        this->num_fragmentation = 0;  // reset to 0 to record current cell only
         // genome information will be recomputed later
     }
 
@@ -825,6 +834,7 @@ public:
               if(verbose > 0){
                 cout << "\nThe new path has local fragmentation" << endl;
               }
+              num_fragmentation += 1;
               fragment_path(p, pid, n_local_frag, frac_unrepaired, circular_prob, dcell1, dcell2, verbose);
           }else{
               g->paths[p->id] = p;
@@ -939,6 +949,7 @@ public:
               if(verbose > 0){
                 cout << "\nThe new path has local fragmentation with probability 0.5" << endl;
               }
+              num_fragmentation += 1;
               fragment_path(p, pid, n_local_frag, frac_unrepaired, circular_prob, dcell1, dcell2, verbose);
             }else{
               if(verbose > 0){

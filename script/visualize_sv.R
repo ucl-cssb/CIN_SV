@@ -186,7 +186,7 @@ theme2 = theme(legend.position = "none",
 # Format of d_seg: sample, chrom, start, end, cn
 plot.cn.heatmap <- function(d_seg, main, type="absolute", theme = theme1, cn_colors = cn_colors1, allele_specific = F, tsize = 12){
   d_seg$cn = round(d_seg$cn)
-  d_seg$chrom = factor(d_seg$chrom, levels=paste("",c(1:22, "X"),sep=""))
+  d_seg$chrom = factor(d_seg$chrom, levels=paste("",c(1:22, "X", "Y"),sep=""))
   d_seg$pos = (d_seg$end + d_seg$start) / 2
   d_seg$width = (d_seg$pos - d_seg$start) * 2
   

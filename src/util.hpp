@@ -668,7 +668,7 @@ vector<pos_bp> get_bp_from_file(const string& filename, vector<double>& bp_fracs
   getline(infile, line);  // skip header
 
   map<pos_bp, double> bp_freq;
-  set<pos_bp> bps0;  // there may be duplicated breakpoints 
+  set<pos_bp> bps0;  // there may be duplicated breakpoints, the last fraction will be used 
   while(!getline(infile, line).eof()){
     if(verbose) cout << line << endl;
     if(line.empty()){

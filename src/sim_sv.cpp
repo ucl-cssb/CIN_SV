@@ -68,7 +68,7 @@ void write_rck_output(vector<Cell_ptr>& final_cells, string outdir, int verbose 
 
 
 // output the summary statistics computed at bin level
-void write_stat_bin_cn(Clone* s, vector<Cell_ptr>& final_cells, int num_loc, int verbose = 0){
+void write_stat_bin_cn(Clone* s, vector<Cell_ptr>& final_cells, int num_loc, int is_haplotype, int compute_divergence, int verbose = 0){
     map<int, double> cell_ploidy;
     map<int, vector<double>> loc_cn;
     map<int, vector<double>> loc_cnA;
@@ -78,8 +78,30 @@ void write_stat_bin_cn(Clone* s, vector<Cell_ptr>& final_cells, int num_loc, int
     for(auto cell : final_cells){
         cell_ploidy[cell->cell_ID] = cell->ploidy;
         loc_cn[cell->cell_ID] = cell->g->bin_tcn;
-        loc_cnA[cell->cell_ID] = cell->g->bin_cnA;
-        loc_cnB[cell->cell_ID] = cell->g->bin_cnB;
+        if(is_haplotype){
+          loc_cnA[cell->cell_ID] = cell->g->bin_cnA;
+          loc_cnB[cell->cell_ID] = cell->g->bin_cnB;
+        }else{
+          // need to put all bigger value for each bin to A, major CN
+          assert(cell->g->bin_cnA.size() == cell->g->bin_cnB.size());
+          int nbin = cell->g->bin_cnA.size();
+          vector<double> cnMajor(nbin, 0);
+          vector<double> cnMinor(nbin, 0);
+          
+          for(int i = 0; i < nbin; i++){
+            if(cell->g->bin_cnA[i] >= cell->g->bin_cnB[i]){
+              cnMajor[i] = cell->g->bin_cnA[i];
+              cnMinor[i] = cell->g->bin_cnB[i];
+            }else{
+              cnMajor[i] = cell->g->bin_cnB[i];
+              cnMinor[i] = cell->g->bin_cnA[i];              
+            }
+          }
+
+          loc_cnA[cell->cell_ID] = cnMajor;
+          loc_cnB[cell->cell_ID] = cnMinor;
+        }
+
         ids.push_back(cell->cell_ID);
     }
     if(verbose > 0) cout << "summary statistics for " << num_loc << " bins" << endl;
@@ -87,10 +109,16 @@ void write_stat_bin_cn(Clone* s, vector<Cell_ptr>& final_cells, int num_loc, int
     double pga = s->get_pga(loc_cn, num_loc, cell_ploidy);
     double pgaA = s->get_pga(loc_cnA, num_loc, cell_ploidy, 1);
     double pgaB = s->get_pga(loc_cnB, num_loc, cell_ploidy, 1);
-    pair<double, double> div = s->get_pairwise_divergence(ids, loc_cn, num_loc, cell_ploidy);
-    pair<double, double> divA = s->get_pairwise_divergence(ids, loc_cnA, num_loc, cell_ploidy, 1);
-    pair<double, double> divB = s->get_pairwise_divergence(ids, loc_cnB, num_loc, cell_ploidy, 1);
-    cout << pga << "\t" << div.first << "\t" << div.second << "\t" << pgaA << "\t" << divA.first << "\t" << divA.second << "\t" << pgaB << "\t" << divB.first << "\t" << divB.second;
+    
+    if(compute_divergence){
+      pair<double, double> div = s->get_pairwise_divergence(ids, loc_cn, num_loc, cell_ploidy);
+      pair<double, double> divA = s->get_pairwise_divergence(ids, loc_cnA, num_loc, cell_ploidy, 1);
+      pair<double, double> divB = s->get_pairwise_divergence(ids, loc_cnB, num_loc, cell_ploidy, 1);
+
+      cout << pga << "\t" << div.first << "\t" << div.second << "\t" << pgaA << "\t" << divA.first << "\t" << divA.second << "\t" << pgaB << "\t" << divB.first << "\t" << divB.second;
+    }else{
+      cout << pga << "\t" << pgaA << "\t" << pgaB;      
+    }
 }
 
 
@@ -148,6 +176,7 @@ int main(int argc, char const *argv[]){
     string outdir, suffix; // output
     int write_shatterseek, write_rck, write_sumstats, write_genome, write_bin, write_selection;
     int bin_level_sumstat; //
+    int is_haplotype, compute_divergence;
 
     unsigned long seed;
     int track_all;
@@ -203,8 +232,9 @@ int main(int argc, char const *argv[]){
       ("model", po::value<int>(&model_ID)->default_value(0), "model of evolution. 0: neutral; 1: selection")
       ("selection_type", po::value<int>(&selection_type)->default_value(0), "types used to define selection strength, 0: chr-level, 1: arm-level")
       ("growth_type,t", po::value<int>(&growth_type)->default_value(0), "type of growth when adding selection. 0: only birth; 1: change birth rate; 2: change death rate; 3: change both birth or death rate")
-       ("selection_strength,d", po::value<double>(&selection_strength)->default_value(1), "strength of selection, the larger the value, the stronger the selection is")
-
+       ("selection_strength,d", po::value<double>(&selection_strength)->default_value(1), "strength of selection, the larger the value, the stronger the selection is") 
+       ("is_haplotype", po::value<int>(&is_haplotype)->default_value(1), "whether the output copy number is phased or not. 0: no; 1: yes")
+       ("compute_divergence", po::value<int>(&compute_divergence)->default_value(1), "whether or not to compute pairwise divergence of copy number profiles. 0: no; 1: yes")
       // options related to summary statistics
 
       // options related to output
@@ -437,7 +467,7 @@ int main(int argc, char const *argv[]){
     // output all the summary statistics in console for ABC 
     if(bin_level_sumstat){   
       int num_loc = bins.size();  
-      write_stat_bin_cn(s, final_cells, num_loc, verbose);     
+      write_stat_bin_cn(s, final_cells, num_loc, is_haplotype, compute_divergence, verbose);     
     }
     write_stat_bp_freq(s, final_cells, verbose);
     

@@ -1,5 +1,12 @@
 #!/usr/bin/env Rscript
 
+# BiocManager::install(c("GenomicRanges", "BSgenome.Hsapiens.UCSC.hg38"))
+
+
+library(GenomicRanges)
+library(BSgenome.Hsapiens.UCSC.hg38)
+
+
 # Get reference centromere and telomere positions
 
 hgv = "hg19"
@@ -117,3 +124,37 @@ write_tsv(ref_sel, fout)
 # fs_autosome = get_fragile_sites(dir) 
 # fout = "data/fragile_sites.tsv"
 # write_tsv(fs_autosome, fout)
+
+
+get_hg38_bins <- function(odir, bin_size = 500000, exclude_XY = T){
+  # Get the chromosome lengths for hg38
+  hg38_genome <- seqlengths(BSgenome.Hsapiens.UCSC.hg38)
+
+  # Function to create bins for a given chromosome
+  create_bins <- function(chr, chr_length, bin_size) {
+    starts <- seq(1, chr_length, by = bin_size)
+    ends <- pmin(starts + bin_size - 1, chr_length)
+    GRanges(seqnames = chr, ranges = IRanges(start = starts, end = ends))
+  }
+
+  # Create bins for all chromosomes
+  bins <- unlist(lapply(names(hg38_genome), function(chr) {
+    create_bins(chr, hg38_genome[chr], bin_size)
+  }))
+
+  # Convert the GRanges object to a data frame for easy viewing
+  bins_df <- as.data.frame(bins)
+
+  bins_df <- lapply(bins, as.data.frame)
+  combined_df <- do.call(rbind, bins_df)
+
+  bins_sel = combined_df %>% mutate(chr = str_replace(seqnames, "chr",""))  %>% dplyr::select(chr, start, end) %>% arrange(chr, start)
+  if(exclude_XY){
+    bins_sel = bins_sel %>% filter(chr %in% c(1:22))
+  }
+  nbin = nrow(bins_sel)
+  fout = file.path(odir, paste0("bin_hg38_500K_", nbin, ".tsv"))
+  write_tsv(bins_sel, fout)
+}
+
+

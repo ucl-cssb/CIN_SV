@@ -74,7 +74,7 @@ detect_seismic_amplification <- function(cnv, sv, chrBands, minInternalSVs=14, p
   cnv = chr2chrArm(cnv, chrs, chrArms)
   cnv_segments = cnv
   cnv_segments_amp = cnv[cnv$type == "amp"]
-  cnv_amp = reduce(cnv_segments_amp)
+  cnv_amp = GenomicRanges::reduce(cnv_segments_amp)
   
   # (2) Compute regions spanned by structural variants
   if(length(cnv_amp) > 0){
@@ -140,14 +140,14 @@ detect_seismic_amplification <- function(cnv, sv, chrBands, minInternalSVs=14, p
     svRangeInter = GRanges(rangeChr, IRanges(rangeStart, rangeEnd))
     # combine intra- and inter-chromosomal sv-ranges
     svRange = c(svRangeIntra, svRangeInter)
-    svRange = reduce(svRange)
+    svRange = GenomicRanges::reduce(svRange)
     
     # (3) Overlap amplified regions from (1) with  regions from (2) to retrieve potential seismic amplifications
     # split amplified cnv segments at sv breakpoints (some cnvs may go way beyond breakpoints, leading to overestimations of amplicon sizes)
     amps = split_regions(cnv_segments_amp, svRange)
     # define amplicon regions as continuous sets of amplified segments within sv ranges
     amps = subsetByOverlaps(amps, svRange)
-    amps = reduce(amps)
+    amps = GenomicRanges::reduce(amps)
     # remove amplicons below the given cnv tolerance level
     amps = amps[width(amps) > (2*cnvTol)]
     
