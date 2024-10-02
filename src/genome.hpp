@@ -220,6 +220,7 @@ public:
       int chr = pos_sv.chr1;
       int side = pos_sv.side1; 
       int haplotype = myrng(2);
+      // TODO: check if the breakpoint is available, get ID rather than introducing a new one when there are repeats
       breakpoint* j1 = new breakpoint(cell_ID, jid++, chr, bp, HEAD, haplotype, is_end, is_repaired);
       breakpoint* j2 = new breakpoint(cell_ID, jid++, chr, bp + 1, TAIL, haplotype, is_end, is_repaired);
       set_initial_bp_status(j1, j2, aid, chr, haplotype, bp, side, chr_bps, bp_jids, verbose);
@@ -311,10 +312,10 @@ public:
         j1 = breakpoints[adj->junc_id2];
         j2 = breakpoints[adj->junc_id1];
       }
-      if(adj->type == 0){  // only consider intervals
+      if(adj->type == 0){  // only consider intervals for size
           gsize += abs(j2->pos - j1->pos) + 1;
       }     
-      fout << (j1->chr % NUM_CHR) + 1 << ":" << get_haplotype_string(j1->haplotype) << ":" << j1->pos << "-" << (j2->chr % NUM_CHR) + 1 << ":" << get_haplotype_string(j2->haplotype) << ":" << j2->pos << ",";
+      fout << get_adj_type_string(adj->type) << "-" << (j1->chr % NUM_CHR) + 1 << ":" << get_haplotype_string(j1->haplotype) << ":" << j1->pos << "-" << (j2->chr % NUM_CHR) + 1 << ":" << get_haplotype_string(j2->haplotype) << ":" << j2->pos << ",";
     }
     fout << "\t" << gsize << endl;
   }

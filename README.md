@@ -64,6 +64,11 @@ For simplicity, no breakpoints are allowed in centromeres and telomeres.
 * `--fchr_prob`: the file containing the probability of double strand breaks on each chromosome
 
 
+### Optional input files
+* `--fbp `: TSV file with breakpoints to sample from when introducing new DSBs, with the header being chrom1, bp1, strand1, chrom2, bp2, strand2, and frequency(optional). 
+* `--fbp_common`: TSV file with initial clonal SVs, where breakpoints should be unique
+
+
 ## Output 
 The program will generate a list of summary statistics to the standard output for inference with Approximate Bayesian Computation (ABC), including
 * the percentage of genome altered (PGA) for total and haplotype A/B copy number alterations 
