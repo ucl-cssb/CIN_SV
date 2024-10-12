@@ -20,7 +20,7 @@ The simulated and real data used for the analysis in the above manuscript are av
 
 # Installation
 The simulation program has been tested on the latest versions of *nix systems, including:
-* macOS Sonoma 14.3.1, GSL 2.7.1, BOOST 1.83.0
+* MacOS Sonoma 14.3.1, GSL 2.7.1, BOOST 1.83.0
 * Red Hat Enterprise Linux Server (Maipo) 7.8, GSL 2.4, BOOST 1.53.0 
 * CentOS Linux (Core) 7, GSL 2.5, BOOST 1.53.0 
 
@@ -28,6 +28,8 @@ The simulation program has been tested on the latest versions of *nix systems, i
 ## Compilation
 Download the source code and then run `make` in folder "src" to generate the simulation program 'simsv' in a few seconds.
 The simulation program 'simsv' will be stored in a new folder called "bin".
+
+You may need to change BOOST libary path to `/opt/homebrew` on MacOS.
 
 
 # Usage
@@ -86,7 +88,14 @@ In addition, several files may be generated depending on the output options spec
 * SVData_*: files including SVs for each cell, format compatible with [ShatterSeek](https://github.com/parklab/ShatterSeek)
 * c*/rck.acnt.tsv: files including copy numbers for each cell, format compatible with [RCK](https://github.com/aganezov/rck)
 * c*/rck.scnt.tsv: files including SVs for each cell, format compatible with [RCK](https://github.com/aganezov/rck)
-* genome_c\*_div\*.tsv: files including the genomic segments, including ID, shape (linear or circular),	type (depending on the number of telomeres),	Ncentromere, nodes (list of segments separated by breakpoints),	size (total number of bases).
+* genome_c\*_div\*.tsv: files including the genomic segments, with columns:
+    * ID (for a connected path), 
+    * shape (linear or circular),	
+    * type (depending on the number of telomeres), 
+    * Ncentromere  (number of centromeres), 
+    * nodes (list of segments separated by breakpoints, edge type - chromosome_start: haplotype_start: position_start - chromosome_end: haplotype_end: position_end),	
+    * size (total number of base pairs or sum of the size (end - start + 1) of all intervals in the path).
+
 
 ### Data fitting with ABC
 

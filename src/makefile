@@ -2,6 +2,7 @@
 CCC = g++
 # CCC = /usr/local/opt/llvm/bin/clang
 BOOST = /usr/local
+# BOOST = /opt/homebrew
 FLAG = -O3
 # FLAG =
 
