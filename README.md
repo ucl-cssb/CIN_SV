@@ -29,11 +29,11 @@ The simulation program has been tested on the latest versions of *nix systems, i
 Download the source code and then run `make` in folder "src" to generate the simulation program 'simsv' in a few seconds.
 The simulation program 'simsv' will be stored in a new folder called "bin".
 
-You may need to change BOOST libary path to `/opt/homebrew` on MacOS.
+You may need to change BOOST libary path to `/opt/homebrew` on MacOS in makefile.
 
 
 # Usage
-Please run `./simsv -h` for all options.
+Please run `./bin/simsv -h` for all options.
 
 Please run `bash script/run_sv.sh` for an example, which will generate simulated data with the given parameters in less than one second or a bit longer depending on the system.
 The output will be stored in a new folder called "example".
@@ -112,6 +112,10 @@ Please see the following scripts in folder "script" for how to generate the plot
 * Fig 4: parse_ecdna.R
 * Fig 5: abc/check_abc_sc_sim.R
 * Fig 6: abc/check_abc_sc_real.R
+
+The genome_c\*_div\*.tsv file can be converted to [GFA](https://github.com/GFA-spec/GFA-spec) format and visualized by multiple tools, such as [BandageNG](https://github.com/asl/BandageNG). \
+Sample command to do the format conversion: \
+`python script/genome2gfa.py example/genome_c2_div1.tsv`
 
 
 
